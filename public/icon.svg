@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+  <defs>
+    <!-- Premium dark moss/stone theme gradient -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3F4F42"/>
+      <stop offset="100%" stop-color="#232D25"/>
+    </linearGradient>
+    <!-- Organic golden accent gradient -->
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E4C183"/>
+      <stop offset="100%" stop-color="#C59350"/>
+    </linearGradient>
+    <!-- Soft spring green sprout gradient -->
+    <linearGradient id="sprout" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A7C957"/>
+      <stop offset="100%" stop-color="#55823D"/>
+    </linearGradient>
+    <filter id="glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Base App Icon Frame (iOS style rounded squircle) -->
+  <rect width="512" height="512" rx="115" fill="url(#bg)" />
+  
+  <!-- Subtle Internal Thin Border -->
+  <rect x="16" y="16" width="480" height="480" rx="99" stroke="#90A195" stroke-width="2.5" stroke-opacity="0.15" />
+  
+  <!-- Decorative Background Ring -->
+  <circle cx="256" cy="256" r="140" stroke="url(#gold)" stroke-width="1.5" stroke-opacity="0.1" />
+
+  <!-- Premium Sprout / Leaves Artwork Group -->
+  <g transform="translate(136, 110)">
+    <!-- Supportive Earth Foundation -->
+    <ellipse cx="120" cy="245" rx="75" ry="12" fill="#55823D" fill-opacity="0.1" />
+    
+    <!-- Central Growing Shoot / Stem -->
+    <path d="M 120 250 
+             C 120 180, 80 130, 85 95 
+             C 88 75, 105 60, 125 72 
+             C 140 82, 142 105, 137 140
+             C 133 170, 134 210, 134 250 Z" 
+          fill="url(#sprout)" />
+
+    <!-- Majestic Right Golden Leaf (representing nursery quality and harvest) -->
+    <path d="M 130 130 
+             C 160 85, 230 75, 215 130 
+             C 200 170, 150 180, 130 130 Z" 
+          fill="url(#gold)" 
+          filter="url(#glow)" />
+
+    <!-- Elegant Left Spring Green Leaf -->
+    <path d="M 103 162 
+             C 70 125, 12 135, 30 182 
+             C 45 215, 85 205, 103 162 Z" 
+          fill="url(#sprout)" />
+          
+    <!-- Miniature golden new bud -->
+    <path d="M 116 80
+             C 108 65, 115 50, 125 55
+             C 132 60, 126 75, 116 80 Z"
+          fill="url(#gold)" />
+  </g>
+</svg>
