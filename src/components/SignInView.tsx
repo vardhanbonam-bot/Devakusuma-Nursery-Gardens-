@@ -382,14 +382,34 @@ export default function SignInView({ onSignInSuccess }: SignInViewProps) {
               </AnimatePresence>
 
               {/* Profiles Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
+              <motion.div
+                variants={{
+                  hidden: { opacity: 0 },
+                  show: {
+                    opacity: 1,
+                    transition: {
+                      staggerChildren: 0.08
+                    }
+                  }
+                }}
+                initial="hidden"
+                animate="show"
+                className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5"
+              >
                 {users.map((u) => {
                   const initials = u.username.slice(0, 2).toUpperCase();
                   return (
-                    <div
+                    <motion.div
                       key={u.id}
+                      variants={{
+                        hidden: { opacity: 0, y: 15, scale: 0.97 },
+                        show: { opacity: 1, y: 0, scale: 1 }
+                      }}
+                      transition={{ type: "spring", stiffness: 180, damping: 18 }}
+                      whileHover={{ scale: 1.025, transition: { duration: 0.2 } }}
+                      whileTap={{ scale: 0.98 }}
                       onClick={() => handleSelectUser(u)}
-                      className="group flex items-center gap-4 bg-editorial-bg hover:bg-white border-2 border-editorial-primary/5 hover:border-editorial-primary/30 p-4 rounded-2xl cursor-pointer transition-all duration-300 hover:shadow-[0_4px_16px_rgba(0,0,0,0.03)] scale-[0.99] hover:scale-100 flex-1 relative"
+                      className="group flex items-center gap-4 bg-editorial-bg hover:bg-white border-2 border-editorial-primary/5 hover:border-editorial-primary/30 p-4 rounded-2xl cursor-pointer transition-all duration-300 hover:shadow-[0_4px_16px_rgba(0,0,0,0.03)] flex-1 relative"
                     >
                       <div
                         className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold font-sans text-sm shadow-xs shrink-0"
@@ -417,10 +437,10 @@ export default function SignInView({ onSignInSuccess }: SignInViewProps) {
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
-                    </div>
+                    </motion.div>
                   );
                 })}
-              </div>
+              </motion.div>
 
               {/* Footer instruction */}
               <div className="text-center text-[10px] text-editorial-primary/60 font-sans tracking-widest uppercase mt-12 border-t border-editorial-primary/5 pt-6">

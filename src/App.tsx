@@ -15,6 +15,9 @@ import SignInView from "./components/SignInView";
 import { Sprout, LayoutDashboard, Trees, ShoppingCart, ShoppingBag, Leaf, HelpCircle, HardDrive, LogOut, User, AlertTriangle } from "lucide-react";
 
 export default function App() {
+  // Animation splash intro state
+  const [showSplash, setShowSplash] = useState(true);
+
   // Authentication user session State
   const [currentUser, setCurrentUser] = useState<NurseryUser | null>(null);
 
@@ -41,6 +44,13 @@ export default function App() {
     : false;
 
   // Load from localStorage on mount (or use seed data)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, 2800);
+    return () => clearTimeout(timer);
+  }, []);
+
   useEffect(() => {
     // 0. Purity system upgrade - safe cleanup of old sandboxed database entries
     const isPurityCleared = localStorage.getItem("devakusuma_purity_v1");
@@ -511,8 +521,158 @@ export default function App() {
     setShowResetModal(false);
   };
 
+  if (showSplash) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#1D211C] text-[#FAFAF8] overflow-hidden select-none font-sans">
+        {/* Subtle slow spinning ambient glow behind the seedling */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 0.16, scale: 1.25 }}
+          transition={{ duration: 2, ease: "easeOut" }}
+          className="absolute w-[450px] h-[450px] rounded-full bg-[#A3B18A] blur-[110px] pointer-events-none"
+        />
+
+        <div className="relative z-10 flex flex-col items-center text-center max-w-sm px-6">
+          {/* Elegant Custom Blooming Leaf SVG with Motion */}
+          <div className="w-24 h-24 mb-6 flex items-center justify-center">
+            <svg viewBox="0 0 100 100" className="w-full h-full text-[#A3B18A]">
+              {/* Stem growing */}
+              <motion.path
+                d="M50,85 Q50,55 50,28"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{ duration: 1.2, ease: "easeInOut" }}
+              />
+
+              {/* Left Leaf Blooming */}
+              <motion.path
+                d="M48,58 C26,52 22,36 48,41"
+                fill="currentColor"
+                fillOpacity="0.18"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                initial={{ pathLength: 0, scale: 0, originX: "48px", originY: "58px" }}
+                animate={{ pathLength: 1, scale: 1 }}
+                transition={{ delay: 0.6, duration: 0.9, ease: [0.34, 1.56, 0.64, 1] }}
+              />
+
+              {/* Right Leaf Blooming */}
+              <motion.path
+                d="M52,43 C74,38 78,22 52,27"
+                fill="currentColor"
+                fillOpacity="0.25"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                initial={{ pathLength: 0, scale: 0, originX: "52px", originY: "43px" }}
+                animate={{ pathLength: 1, scale: 1 }}
+                transition={{ delay: 1.0, duration: 0.85, ease: [0.34, 1.56, 0.64, 1] }}
+              />
+
+              {/* Tiny morning dew drop */}
+              <motion.circle
+                cx="50"
+                cy="28"
+                r="3"
+                fill="#72E088"
+                initial={{ opacity: 0, scale: 0, y: -8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ delay: 1.5, duration: 0.45, ease: "easeOut" }}
+              />
+            </svg>
+          </div>
+
+          {/* Main Brand Title Stagger */}
+          <motion.h2
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, duration: 0.7, ease: "easeOut" }}
+            className="font-serif italic text-3xl font-bold tracking-tight text-white"
+          >
+            Devakusuma
+          </motion.h2>
+
+          <motion.p
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6, duration: 0.7, ease: "easeOut" }}
+            className="text-[10px] md:text-xs font-sans font-bold uppercase tracking-[0.25em] text-[#A3B18A]/90 mt-2"
+          >
+            Live Botanical & Invoice Ledger
+          </motion.p>
+
+          <div className="w-32 h-[1px] bg-white/15 my-6 relative overflow-hidden rounded-full">
+            {/* Dynamic load progression bar */}
+            <motion.div
+              initial={{ left: "-100%" }}
+              animate={{ left: "100%" }}
+              transition={{ duration: 1.9, repeat: 0, ease: "easeInOut", delay: 0.4 }}
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-[#A3B18A] to-transparent"
+            />
+          </div>
+
+          {/* Micro loading logs sequence */}
+          <div className="h-6 overflow-hidden relative">
+            <motion.span
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: [0, 1, 1, 0], y: [15, 0, 0, -15] }}
+              transition={{ times: [0, 0.1, 0.9, 1], duration: 1.1, delay: 0.2 }}
+              className="block text-[8px] font-mono text-white/40 uppercase tracking-[0.15em] w-full"
+            >
+              Establishing secure seed connect...
+            </motion.span>
+            <motion.span
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: [0, 1, 1, 0], y: [15, 0, 0, -15] }}
+              transition={{ times: [0, 0.1, 0.9, 1], duration: 1.1, delay: 1.2 }}
+              className="block text-[8px] font-mono text-white/40 uppercase tracking-[0.15em] absolute top-0 left-0 w-full"
+            >
+              Calibrating botanical stocks...
+            </motion.span>
+            <motion.span
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 2.3 }}
+              className="block text-[8px] font-mono text-[#72E088] uppercase tracking-[0.15em] font-bold absolute top-0 left-0 w-full"
+            >
+              Ledger synchronized &bull; live
+            </motion.span>
+          </div>
+        </div>
+
+        {/* Absolute decorative bottom notes */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.25 }}
+          transition={{ delay: 1.2, duration: 1 }}
+          className="absolute bottom-8 text-[8px] font-sans text-white/70 tracking-[0.3em] uppercase"
+        >
+          Karnataka, India &bull; Est. 1977
+        </motion.div>
+      </div>
+    );
+  }
+
   if (!currentUser) {
-    return <SignInView onSignInSuccess={handleSignIn} />;
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key="sign-in-screen"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="min-h-screen"
+        >
+          <SignInView onSignInSuccess={handleSignIn} />
+        </motion.div>
+      </AnimatePresence>
+    );
   }
 
   return (
