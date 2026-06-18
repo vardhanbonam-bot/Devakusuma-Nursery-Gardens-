@@ -1,10 +1,11 @@
 // Devakusuma Farm OS - Progressive Web App Service Worker
-const CACHE_NAME = "devakusuma-cache-v1";
+const CACHE_NAME = "devakusuma-cache-v2";
 const ASSETS_TO_CACHE = [
   "/",
   "/index.html",
   "/manifest.json",
-  "/icon.svg"
+  "/icon.svg",
+  "/logo.svg"
 ];
 
 // Installs the service worker and caches basic entry shells

@@ -528,8 +528,8 @@ export default function App() {
       {/* Editorial Footer */}
       <footer className="py-6 px-6 md:px-10 flex flex-col md:flex-row items-center justify-between text-[10px] uppercase tracking-[0.2em] font-sans text-editorial-primary/70 border-t border-editorial-primary/10 bg-white/20 mt-12 shrink-0 gap-4 mb-20 md:mb-0">
         <div className="flex items-center gap-2">
-          <Leaf className="w-3.5 h-3.5 text-editorial-primary" />
-          <span>Local Sync: Active &bull; LocalStorage Secure</span>
+          <Leaf className="w-3.5 h-3.5 text-editorial-primary font-bold" />
+          <span>Devakusuma Nursery Gardens</span>
         </div>
         <div>
           <span>Operator: {currentUser.username} ({currentUser.role})</span>
