@@ -389,16 +389,10 @@ export default function App() {
       {/* Editorial Navigation Toolbar */}
       <nav className="h-16 md:h-20 px-6 md:px-10 border-b border-editorial-primary/20 flex items-center justify-between bg-white/60 backdrop-blur-md sticky top-0 z-20 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 md:w-10 md:h-10 bg-editorial-primary rounded-full flex items-center justify-center text-white">
-            <Sprout className="w-4 h-4 md:w-5 md:h-5 animate-pulse" />
-          </div>
+          <img src="/logo.svg" alt="Devakusuma Logo" className="w-10 h-10 md:w-14 md:h-14 object-contain" />
           <div>
             <span className="text-sm md:text-2xl font-bold tracking-tight text-editorial-dark font-serif italic">Devakusuma Nursery Gardens</span>
             <span className="text-[10px] font-sans uppercase tracking-widest text-editorial-primary/70 ml-2 font-medium">Farm OS</span>
-            <span className="inline-flex items-center gap-1.5 text-[9px] font-sans text-stone-700 bg-emerald-50/70 border border-emerald-300/40 px-2 py-0.5 rounded-full ml-3 font-bold tracking-widest uppercase">
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full shrink-0" />
-              Cloud Sync Enabled
-            </span>
           </div>
         </div>
 
