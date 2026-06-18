@@ -6,6 +6,8 @@ interface PurchaseViewProps {
   inventory: InventoryItem[];
   purchases: PurchaseRecord[];
   onAddPurchase: (purchase: Omit<PurchaseRecord, "id">, targetSellingPriceForNew: number) => void;
+  onDeletePurchase?: (purchaseId: string) => void;
+  onUpdatePurchase?: (purchase: PurchaseRecord) => void;
   isReadOnly?: boolean;
 }
 

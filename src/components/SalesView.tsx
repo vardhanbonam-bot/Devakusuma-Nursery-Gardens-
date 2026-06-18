@@ -1,15 +1,24 @@
 import React, { useState } from "react";
 import { SalesRecord, InventoryItem } from "../types";
-import { FileText, Calendar, User, ShoppingBag, AlertTriangle, Download, Share2, Printer, X, CheckCircle } from "lucide-react";
+import { FileText, Calendar, User, ShoppingBag, AlertTriangle, Download, Share2, Printer, X, CheckCircle, Edit2, Trash2, Save } from "lucide-react";
 
 interface SalesViewProps {
   inventory: InventoryItem[];
   sales: SalesRecord[];
   onAddSale: (sale: Omit<SalesRecord, "id" | "invoiceNumber">) => SalesRecord;
+  onDeleteSale?: (saleId: string) => void;
+  onUpdateSale?: (sale: SalesRecord) => void;
   isReadOnly?: boolean;
 }
 
-export default function SalesView({ inventory, sales, onAddSale, isReadOnly = false }: SalesViewProps) {
+export default function SalesView({
+  inventory,
+  sales,
+  onAddSale,
+  onDeleteSale,
+  onUpdateSale,
+  isReadOnly = false
+}: SalesViewProps) {
   // Sales State
   const [saleDate, setSaleDate] = useState(new Date().toISOString().split("T")[0]);
   const [customerName, setCustomerName] = useState("");
@@ -19,6 +28,13 @@ export default function SalesView({ inventory, sales, onAddSale, isReadOnly = fa
   // Invoice Popup Modal State
   const [latestSale, setLatestSale] = useState<SalesRecord | null>(null);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+
+  // Local Inline edit states inside Invoice popup
+  const [isEditingInvoice, setIsEditingInvoice] = useState(false);
+  const [editDate, setEditDate] = useState("");
+  const [editCustomer, setEditCustomer] = useState("");
+  const [editQty, setEditQty] = useState(0);
+  const [editPrice, setEditPrice] = useState(0);
 
   // Available plant choices in inventory (excluding out-of-stock items)
   const availableItems = inventory.filter((item) => item.quantityAvailable > 0);
@@ -192,6 +208,47 @@ export default function SalesView({ inventory, sales, onAddSale, isReadOnly = fa
 
   const handlePrint = () => {
     window.print();
+  };
+
+  // Local Inline Editing & Deleting Handlers inside SalesView
+  const handleSaveInlineEdit = () => {
+    if (!latestSale) return;
+
+    // Calculate maximum stock edit limits
+    const invItem = inventory.find(
+      (item) => item.plantName.toLowerCase() === latestSale.plantName.toLowerCase() && item.plantSize === latestSale.plantSize
+    );
+    const available = invItem ? invItem.quantityAvailable : 0;
+    const maxAllowed = available + latestSale.quantitySold;
+
+    if (editQty > maxAllowed) {
+      alert(`⛔ Insufficient stock! The maximum allowed sales quantity for this transaction is ${maxAllowed} units based on live inventory.`);
+      return;
+    }
+
+    const updated: SalesRecord = {
+      ...latestSale,
+      saleDate: editDate,
+      customerName: editCustomer,
+      quantitySold: editQty,
+      sellingPrice: editPrice,
+      totalSaleValue: editQty * editPrice
+    };
+
+    onUpdateSale?.(updated);
+    setLatestSale(updated);
+    setIsEditingInvoice(false);
+    alert("Invoice modified successfully!");
+  };
+
+  const handleDeleteInline = () => {
+    if (!latestSale) return;
+
+    if (window.confirm(`⚠️ Are you sure you want to cancel and delete invoice ${latestSale.invoiceNumber}?\n\nThis will restock the ${latestSale.quantitySold} sold plants back into available inventory.`)) {
+      onDeleteSale?.(latestSale.id);
+      setShowInvoiceModal(false);
+      setIsEditingInvoice(false);
+    }
   };
 
   return (
@@ -381,6 +438,7 @@ export default function SalesView({ inventory, sales, onAddSale, isReadOnly = fa
                 onClick={() => {
                   setLatestSale(sal);
                   setShowInvoiceModal(true);
+                  setIsEditingInvoice(false);
                 }}
                 title="Review Invoice"
               >
@@ -423,101 +481,227 @@ export default function SalesView({ inventory, sales, onAddSale, isReadOnly = fa
             <div className="bg-editorial-primary text-white px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-editorial-accent-light" />
-                <span className="font-sans uppercase tracking-wider text-xs font-bold">Transaction Confirmed</span>
+                <span className="font-sans uppercase tracking-wider text-xs font-bold">
+                  {isEditingInvoice ? "Editing Transaction" : "Transaction Confirmed"}
+                </span>
               </div>
               <button
                 id="btn-close-invoice"
-                onClick={() => setShowInvoiceModal(false)}
+                onClick={() => {
+                  setShowInvoiceModal(false);
+                  setIsEditingInvoice(false);
+                }}
                 className="hover:bg-editorial-dark/40 p-1.5 rounded-full transition cursor-pointer"
               >
                 <X className="w-4 h-4 text-white" />
               </button>
             </div>
 
-            {/* Visual Paper Invoice Slip */}
+            {/* Visual Paper Invoice Slip / Editor */}
             <div className="p-6 md:p-8 overflow-y-auto space-y-4 text-editorial-dark bg-[#FAFAF8] font-sans border-b border-editorial-primary/5">
-              <div className="text-center space-y-0.5">
-                <h3 className="text-lg font-serif font-bold text-editorial-dark tracking-tight">DEVAKUSUMA NURSERY GARDENS</h3>
-                <p className="text-[9px] font-sans uppercase tracking-[0.1em] text-editorial-primary/80">Live Botanical Greenhouse</p>
-                <p className="text-[9px] font-mono text-editorial-primary/50">Farms & Nursery, Karnataka</p>
-                <div className="border-b border-dashed border-editorial-primary/20 my-3"></div>
-                <h4 className="text-[10px] font-sans font-bold uppercase tracking-widest text-[#5A5A40]">POS SALES MEMO</h4>
-              </div>
-
-              <div className="text-[11px] space-y-1.5 font-mono text-editorial-dark">
-                <div className="flex justify-between">
-                  <span className="text-editorial-primary/70">Invoice Code:</span>
-                  <span className="font-bold">{latestSale.invoiceNumber}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-editorial-primary/70">Sale Date:</span>
-                  <span>{latestSale.saleDate}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-editorial-primary/70">Buyer Name:</span>
-                  <span className="font-semibold">{latestSale.customerName}</span>
-                </div>
-              </div>
-
-              <div className="border-t border-dashed border-editorial-primary/20 my-3"></div>
-
-              {/* Items grid */}
-              <div className="space-y-3 text-xs">
-                <div className="flex justify-between font-sans font-bold text-editorial-primary/80 text-[9px] uppercase tracking-wider">
-                  <span>Botanical Species & Size</span>
-                  <span className="text-right">Line Total</span>
-                </div>
-                <div className="flex justify-between items-start font-mono text-editorial-dark">
-                  <div>
-                    <p className="font-serif font-bold text-[13px]">{latestSale.plantName}</p>
-                    <p className="text-[10px] text-editorial-primary/70 mt-0.5">Size: {latestSale.plantSize} &bull; {latestSale.quantitySold} x ₹{latestSale.sellingPrice}</p>
+              {isEditingInvoice ? (
+                <div className="space-y-4 text-xs">
+                  <div className="text-center space-y-1 pb-2 border-b border-editorial-primary/10">
+                    <h4 className="text-[10px] font-sans font-bold uppercase tracking-widest text-[#5A5A40]">EDIT POS SALES RECEIPT</h4>
+                    <p className="text-[9px] text-editorial-primary/70 font-mono">CODE: {latestSale.invoiceNumber}</p>
                   </div>
-                  <span className="font-bold text-[13px] text-editorial-dark">₹{latestSale.totalSaleValue}</span>
+
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Sale Date</label>
+                      <input
+                        type="date"
+                        value={editDate}
+                        onChange={(e) => setEditDate(e.target.value)}
+                        className="w-full text-xs font-mono bg-white border border-editorial-primary/10 rounded-lg p-2 text-editorial-dark outline-none focus:border-editorial-primary/30"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Buyer / Customer Name</label>
+                      <input
+                        type="text"
+                        value={editCustomer}
+                        onChange={(e) => setEditCustomer(e.target.value)}
+                        className="w-full text-xs font-serif bg-white border border-editorial-primary/10 rounded-lg p-2 text-editorial-dark outline-none focus:border-editorial-primary/30"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Quantity Sold</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={editQty || ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === "" || /^\d+$/.test(val)) {
+                              setEditQty(val === "" ? 0 : parseInt(val, 10));
+                            }
+                          }}
+                          className="w-full text-xs font-mono bg-white border border-editorial-primary/10 rounded-lg p-2 text-editorial-dark outline-none focus:border-editorial-primary/30"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Unit Selling Price (₹)</label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={editPrice || ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === "" || /^\d*\.?\d*$/.test(val)) {
+                              setEditPrice(val === "" ? 0 : parseFloat(val));
+                            }
+                          }}
+                          className="w-full text-xs font-mono bg-white border border-editorial-primary/10 rounded-lg p-2 text-editorial-dark outline-none focus:border-editorial-primary/30"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="bg-editorial-bg p-3.5 rounded-xl border border-editorial-primary/15 flex justify-between items-center mt-2 select-none">
+                      <span className="text-[11px] font-serif italic text-editorial-primary">Recomputed Bill Total:</span>
+                      <span className="text-[15px] font-mono font-bold text-editorial-dark">
+                        ₹{(editQty * editPrice).toLocaleString("en-IN")}.00
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2.5 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingInvoice(false)}
+                      className="flex-1 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-stone-100 hover:bg-stone-200 text-stone-600 transition cursor-pointer"
+                    >
+                      Discard
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveInlineEdit}
+                      className="flex-1 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-editorial-primary hover:bg-editorial-dark text-white transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      Save
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div className="text-center space-y-0.5">
+                    <h3 className="text-lg font-serif font-bold text-editorial-dark tracking-tight">DEVAKUSUMA NURSERY GARDENS</h3>
+                    <p className="text-[9px] font-sans uppercase tracking-[0.1em] text-editorial-primary/80">Live Botanical Greenhouse</p>
+                    <p className="text-[9px] font-mono text-editorial-primary/50">Farms & Nursery, Karnataka</p>
+                    <div className="border-b border-dashed border-editorial-primary/20 my-3"></div>
+                    <h4 className="text-[10px] font-sans font-bold uppercase tracking-widest text-[#5A5A40]">POS SALES MEMO</h4>
+                  </div>
 
-              <div className="border-b border-dashed border-editorial-primary/20 my-3"></div>
+                  <div className="text-[11px] space-y-1.5 font-mono text-editorial-dark">
+                    <div className="flex justify-between">
+                      <span className="text-editorial-primary/70">Invoice Code:</span>
+                      <span className="font-bold">{latestSale.invoiceNumber}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-editorial-primary/70">Sale Date:</span>
+                      <span>{latestSale.saleDate}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-editorial-primary/70">Buyer Name:</span>
+                      <span className="font-semibold">{latestSale.customerName}</span>
+                    </div>
+                  </div>
 
-              <div className="flex justify-between items-center bg-editorial-bg/60 border border-editorial-primary/10 p-4 rounded-xl text-editorial-dark">
-                <span className="text-xs font-sans uppercase tracking-wider font-bold text-editorial-primary">Total Paid:</span>
-                <span className="text-xl font-mono font-bold text-editorial-dark">
-                  ₹{latestSale.totalSaleValue.toLocaleString("en-IN")}.00
-                </span>
-              </div>
+                  <div className="border-t border-dashed border-editorial-primary/20 my-3"></div>
 
-              <p className="text-[10px] text-editorial-primary/70 text-center italic font-serif leading-relaxed pt-2">
-                🌱 Thank you for choosing green! Let earth blossom.
-              </p>
+                  {/* Items grid */}
+                  <div className="space-y-3 text-xs">
+                    <div className="flex justify-between font-sans font-bold text-editorial-primary/80 text-[9px] uppercase tracking-wider">
+                      <span>Botanical Species & Size</span>
+                      <span className="text-right">Line Total</span>
+                    </div>
+                    <div className="flex justify-between items-start font-mono text-editorial-dark">
+                      <div>
+                        <p className="font-serif font-bold text-[13px]">{latestSale.plantName}</p>
+                        <p className="text-[10px] text-editorial-primary/70 mt-0.5">Size: {latestSale.plantSize} &bull; {latestSale.quantitySold} x ₹{latestSale.sellingPrice}</p>
+                      </div>
+                      <span className="font-bold text-[13px] text-editorial-dark">₹{latestSale.totalSaleValue}</span>
+                    </div>
+                  </div>
+
+                  <div className="border-b border-dashed border-editorial-primary/20 my-3"></div>
+
+                  <div className="flex justify-between items-center bg-editorial-bg/60 border border-editorial-primary/10 p-4 rounded-xl text-editorial-dark">
+                    <span className="text-xs font-sans uppercase tracking-wider font-bold text-editorial-primary">Total Paid:</span>
+                    <span className="text-xl font-mono font-bold text-editorial-dark">
+                      ₹{latestSale.totalSaleValue.toLocaleString("en-IN")}.00
+                    </span>
+                  </div>
+
+                  <p className="text-[10px] text-editorial-primary/70 text-center italic font-serif leading-relaxed pt-2">
+                    🌱 Thank you for choosing green! Let earth blossom.
+                  </p>
+                </>
+              )}
             </div>
 
             {/* Action buttons inside paper popup */}
             <div className="p-5 bg-white border-t border-editorial-primary/10 flex flex-col gap-3.5 shrink-0">
-              <button
-                id="btn-pdf-download"
-                onClick={() => handleDownloadPDF(latestSale)}
-                className="w-full bg-editorial-primary hover:bg-editorial-dark text-white font-bold text-xs uppercase tracking-widest py-3 rounded-full transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-              >
-                <Download className="w-4 h-4" />
-                Download PDF Invoice
-              </button>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  id="btn-whatsapp-share"
-                  onClick={() => handleWhatsAppShare(latestSale)}
-                  className="bg-white hover:bg-editorial-bg text-editorial-dark border border-editorial-primary/15 font-bold text-[10px] font-sans uppercase tracking-[0.12em] py-2.5 rounded-full transition flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Share2 className="w-3.5 h-3.5 text-editorial-primary" />
-                  WhatsApp
-                </button>
-                <button
-                  id="btn-invoice-print"
-                  onClick={handlePrint}
-                  className="bg-white hover:bg-editorial-bg text-editorial-dark border border-editorial-primary/15 font-bold text-[10px] font-sans uppercase tracking-[0.12em] py-2.5 rounded-full transition flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5 text-editorial-primary" />
-                  Print Memo
-                </button>
-              </div>
+              {!isEditingInvoice && (
+                <>
+                  <button
+                    id="btn-pdf-download"
+                    onClick={() => handleDownloadPDF(latestSale)}
+                    className="w-full bg-editorial-primary hover:bg-editorial-dark text-white font-bold text-xs uppercase tracking-widest py-3 rounded-full transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download PDF Invoice
+                  </button>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      id="btn-whatsapp-share"
+                      onClick={() => handleWhatsAppShare(latestSale)}
+                      className="bg-white hover:bg-editorial-bg text-editorial-dark border border-editorial-primary/15 font-bold text-[10px] font-sans uppercase tracking-[0.12em] py-2.5 rounded-full transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Share2 className="w-3.5 h-3.5 text-editorial-primary" />
+                      WhatsApp
+                    </button>
+                    <button
+                      id="btn-invoice-print"
+                      onClick={handlePrint}
+                      className="bg-white hover:bg-editorial-bg text-editorial-dark border border-editorial-primary/15 font-bold text-[10px] font-sans uppercase tracking-[0.12em] py-2.5 rounded-full transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-editorial-primary" />
+                      Print Memo
+                    </button>
+                  </div>
+
+                  {!isReadOnly && (
+                    <div className="grid grid-cols-2 gap-3 border-t border-editorial-primary/10 pt-3.5 mt-1">
+                      <button
+                        onClick={() => {
+                          setIsEditingInvoice(true);
+                          setEditDate(latestSale.saleDate);
+                          setEditCustomer(latestSale.customerName);
+                          setEditQty(latestSale.quantitySold);
+                          setEditPrice(latestSale.sellingPrice);
+                        }}
+                        className="bg-stone-50 hover:bg-stone-100 text-stone-700 border border-stone-200 font-bold text-[10px] font-sans uppercase tracking-[0.12em] py-2.5 rounded-full transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Edit2 className="w-3.5 h-3.5 text-stone-600" />
+                        Edit Memo
+                      </button>
+                      <button
+                        onClick={handleDeleteInline}
+                        className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold text-[10px] font-sans uppercase tracking-[0.12em] py-2.5 rounded-full transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                        Cancel Rec
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>

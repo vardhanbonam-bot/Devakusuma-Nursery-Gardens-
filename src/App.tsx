@@ -259,6 +259,14 @@ export default function App() {
     removeItem("inventory", id).catch(console.error);
   };
 
+  // System Handler: Mass Delete Plants from Inventory
+  const handleMassDeletePlants = (ids: string[]) => {
+    const updated = inventory.filter((inv) => !ids.includes(inv.id));
+    setInventory(updated);
+    localStorage.setItem("devakusuma_inventory", JSON.stringify(updated));
+    Promise.all(ids.map((id) => removeItem("inventory", id))).catch(console.error);
+  };
+
   // System Handler: Authentication SignIn / SignOut Actions
   const handleSignIn = (user: NurseryUser) => {
     setCurrentUser(user);
@@ -355,6 +363,129 @@ export default function App() {
     }
 
     return newSale; // Returns sale for modal trigger
+  };
+
+  // System Handler: Delete / Cancel Sale
+  const handleDeleteSale = (saleId: string) => {
+    const saleToDelete = sales.find((s) => s.id === saleId);
+    if (!saleToDelete) return;
+
+    // Remove from local sales state
+    const updatedSales = sales.filter((s) => s.id !== saleId);
+    setSales(updatedSales);
+    localStorage.setItem("devakusuma_sales", JSON.stringify(updatedSales));
+    removeItem("sales", saleId).catch(console.error);
+
+    // Rollback Inventory: add the quantity back
+    const matchedIdx = inventory.findIndex(
+      (inv) =>
+        inv.plantName.toLowerCase() === saleToDelete.plantName.toLowerCase() &&
+        inv.plantSize === saleToDelete.plantSize
+    );
+
+    if (matchedIdx !== -1) {
+      const updatedInventory = [...inventory];
+      updatedInventory[matchedIdx].quantityAvailable += saleToDelete.quantitySold;
+      setInventory(updatedInventory);
+      localStorage.setItem("devakusuma_inventory", JSON.stringify(updatedInventory));
+      saveItem("inventory", updatedInventory[matchedIdx].id, updatedInventory[matchedIdx]).catch(console.error);
+    }
+  };
+
+  // System Handler: Update / Edit Sale
+  const handleUpdateSale = (updatedSale: SalesRecord) => {
+    const oldSale = sales.find((s) => s.id === updatedSale.id);
+    if (!oldSale) return;
+
+    // Diff in quantity sold
+    const diffQty = oldSale.quantitySold - updatedSale.quantitySold;
+
+    // Update sales state
+    const updatedSales = sales.map((s) => (s.id === updatedSale.id ? updatedSale : s));
+    setSales(updatedSales);
+    localStorage.setItem("devakusuma_sales", JSON.stringify(updatedSales));
+    saveItem("sales", updatedSale.id, updatedSale).catch(console.error);
+
+    // Sync Inventory stock
+    const matchedIdx = inventory.findIndex(
+      (inv) =>
+        inv.plantName.toLowerCase() === updatedSale.plantName.toLowerCase() &&
+        inv.plantSize === updatedSale.plantSize
+    );
+
+    if (matchedIdx !== -1) {
+      const updatedInventory = [...inventory];
+      updatedInventory[matchedIdx].quantityAvailable = Math.max(
+        0,
+        updatedInventory[matchedIdx].quantityAvailable + diffQty
+      );
+      setInventory(updatedInventory);
+      localStorage.setItem("devakusuma_inventory", JSON.stringify(updatedInventory));
+      saveItem("inventory", updatedInventory[matchedIdx].id, updatedInventory[matchedIdx]).catch(console.error);
+    }
+  };
+
+  // System Handler: Delete Purchase
+  const handleDeletePurchase = (purchaseId: string) => {
+    const purchaseToDelete = purchases.find((p) => p.id === purchaseId);
+    if (!purchaseToDelete) return;
+
+    // Remove from purchases state
+    const updatedPurchases = purchases.filter((p) => p.id !== purchaseId);
+    setPurchases(updatedPurchases);
+    localStorage.setItem("devakusuma_purchases", JSON.stringify(updatedPurchases));
+    removeItem("purchases", purchaseId).catch(console.error);
+
+    // Rollback Inventory: subtract the purchased quantity
+    const matchedIdx = inventory.findIndex(
+      (inv) =>
+        inv.plantName.toLowerCase() === purchaseToDelete.plantName.toLowerCase() &&
+        inv.plantSize === purchaseToDelete.plantSize
+    );
+
+    if (matchedIdx !== -1) {
+      const updatedInventory = [...inventory];
+      updatedInventory[matchedIdx].quantityAvailable = Math.max(
+        0,
+        updatedInventory[matchedIdx].quantityAvailable - purchaseToDelete.quantityPurchased
+      );
+      setInventory(updatedInventory);
+      localStorage.setItem("devakusuma_inventory", JSON.stringify(updatedInventory));
+      saveItem("inventory", updatedInventory[matchedIdx].id, updatedInventory[matchedIdx]).catch(console.error);
+    }
+  };
+
+  // System Handler: Update Purchase
+  const handleUpdatePurchase = (updatedPurchase: PurchaseRecord) => {
+    const oldPurchase = purchases.find((p) => p.id === updatedPurchase.id);
+    if (!oldPurchase) return;
+
+    // Diff in quantity purchased (if old had 10 and we change to 12, we add 2 more stock)
+    const diffQty = updatedPurchase.quantityPurchased - oldPurchase.quantityPurchased;
+
+    // Update purchases state
+    const updatedPurchases = purchases.map((p) => (p.id === updatedPurchase.id ? updatedPurchase : p));
+    setPurchases(updatedPurchases);
+    localStorage.setItem("devakusuma_purchases", JSON.stringify(updatedPurchases));
+    saveItem("purchases", updatedPurchase.id, updatedPurchase).catch(console.error);
+
+    // Sync Inventory stock
+    const matchedIdx = inventory.findIndex(
+      (inv) =>
+        inv.plantName.toLowerCase() === updatedPurchase.plantName.toLowerCase() &&
+        inv.plantSize === updatedPurchase.plantSize
+    );
+
+    if (matchedIdx !== -1) {
+      const updatedInventory = [...inventory];
+      updatedInventory[matchedIdx].quantityAvailable = Math.max(
+        0,
+        updatedInventory[matchedIdx].quantityAvailable + diffQty
+      );
+      setInventory(updatedInventory);
+      localStorage.setItem("devakusuma_inventory", JSON.stringify(updatedInventory));
+      saveItem("inventory", updatedInventory[matchedIdx].id, updatedInventory[matchedIdx]).catch(console.error);
+    }
   };
 
   // Wipe statistics reset (for easy demo testing)
@@ -502,7 +633,16 @@ export default function App() {
       {/* Main Container Section */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 pb-28 md:p-10 space-y-8">
         {activeTab === "dashboard" && (
-          <DashboardView inventory={inventory} purchases={purchases} sales={sales} />
+          <DashboardView
+            inventory={inventory}
+            purchases={purchases}
+            sales={sales}
+            onDeleteSale={handleDeleteSale}
+            onUpdateSale={handleUpdateSale}
+            onDeletePurchase={handleDeletePurchase}
+            onUpdatePurchase={handleUpdatePurchase}
+            isReadOnly={isReadOnly}
+          />
         )}
 
         {activeTab === "inventory" && (
@@ -512,16 +652,31 @@ export default function App() {
             onBulkImport={handleBulkImport}
             onUpdatePlant={handleUpdatePlant}
             onDeletePlant={handleDeletePlant}
+            onMassDeletePlants={handleMassDeletePlants}
             isReadOnly={isReadOnly}
           />
         )}
 
         {activeTab === "purchase" && (
-          <PurchaseView inventory={inventory} purchases={purchases} onAddPurchase={handleAddPurchase} isReadOnly={isReadOnly} />
+          <PurchaseView
+            inventory={inventory}
+            purchases={purchases}
+            onAddPurchase={handleAddPurchase}
+            onDeletePurchase={handleDeletePurchase}
+            onUpdatePurchase={handleUpdatePurchase}
+            isReadOnly={isReadOnly}
+          />
         )}
 
         {activeTab === "sales" && (
-          <SalesView inventory={inventory} sales={sales} onAddSale={handleAddSale} isReadOnly={isReadOnly} />
+          <SalesView
+            inventory={inventory}
+            sales={sales}
+            onAddSale={handleAddSale}
+            onDeleteSale={handleDeleteSale}
+            onUpdateSale={handleUpdateSale}
+            isReadOnly={isReadOnly}
+          />
         )}
       </main>
 

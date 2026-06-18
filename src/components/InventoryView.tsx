@@ -8,6 +8,7 @@ interface InventoryViewProps {
   onBulkImport: (items: Omit<InventoryItem, "id">[], overwriteExisting?: boolean) => void;
   onUpdatePlant: (item: InventoryItem) => void;
   onDeletePlant: (id: string) => void;
+  onMassDeletePlants?: (ids: string[]) => void;
   isReadOnly?: boolean;
 }
 
@@ -17,6 +18,7 @@ export default function InventoryView({
   onBulkImport,
   onUpdatePlant,
   onDeletePlant,
+  onMassDeletePlants,
   isReadOnly = false,
 }: InventoryViewProps) {
   // Add Plant Form State
@@ -25,6 +27,9 @@ export default function InventoryView({
   const [plantSize, setPlantSize] = useState("1 ft");
   const [quantity, setQuantity] = useState("");
   const [sellingPrice, setSellingPrice] = useState("");
+
+  // Multi-Selection State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // Inline Editing State
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -321,7 +326,7 @@ export default function InventoryView({
   const filteredInventory = inventory.filter((item) => {
     const matchesSearch = item.plantName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesSize = sizeFilter === "All" || item.plantSize === sizeFilter;
-    const isLow = item.quantityAvailable <= 5;
+    const isLow = item.quantityAvailable <= 100;
     const matchesStock =
       stockFilter === "All" ||
       (stockFilter === "Low" && isLow) ||
@@ -334,6 +339,49 @@ export default function InventoryView({
     (sum, item) => sum + item.quantityAvailable * item.sellingPrice,
     0
   );
+
+  // Toggle single item selection
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  // Toggle selection of all items in current filtered view
+  const visibleIds = filteredInventory.map((item) => item.id);
+  const areAllVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+
+  const handleToggleSelectAll = () => {
+    if (areAllVisibleSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
+    } else {
+      setSelectedIds((prev) => {
+        const next = [...prev];
+        visibleIds.forEach((id) => {
+          if (!next.includes(id)) {
+            next.push(id);
+          }
+        });
+        return next;
+      });
+    }
+  };
+
+  const handleMassDelete = () => {
+    if (selectedIds.length === 0) return;
+    if (
+      window.confirm(
+        `⚠️ Are you sure you want to delete ${selectedIds.length} selected varieties from your inventory?\n\nThis will permanently remove them from catalog.`
+      )
+    ) {
+      if (onMassDeletePlants) {
+        onMassDeletePlants(selectedIds);
+      } else {
+        selectedIds.forEach((id) => onDeletePlant(id));
+      }
+      setSelectedIds([]);
+    }
+  };
 
   return (
     <div className="space-y-8" id="inventory-module">
@@ -662,7 +710,7 @@ export default function InventoryView({
         <div className="bg-white border border-editorial-primary/10 p-5 rounded-2xl shadow-xs">
           <p className="text-[10px] font-sans uppercase tracking-widest text-editorial-primary/60 font-bold mb-1">Low Stock Alerts</p>
           <p className="text-3xl font-serif font-medium text-red-700/80">
-            {inventory.filter((i) => i.quantityAvailable <= 5).length}
+            {inventory.filter((i) => i.quantityAvailable <= 100).length}
           </p>
         </div>
         <div className="bg-white border border-editorial-primary/15 p-5 rounded-2xl shadow-xs bg-editorial-bg">
@@ -716,18 +764,57 @@ export default function InventoryView({
                 className="text-xs font-serif bg-white border border-editorial-primary/15 rounded-lg p-2 text-editorial-dark focus:outline-none"
               >
                 <option value="All">All Stock levels</option>
-                <option value="Low">Low Stock (≤ 5 units)</option>
-                <option value="Normal">In Stock (&gt; 5 units)</option>
+                <option value="Low">Low Stock (≤ 100 units)</option>
+                <option value="Normal">In Stock (&gt; 100 units)</option>
               </select>
             </div>
           </div>
         </div>
+
+        {/* Bulk Action Panel */}
+        {selectedIds.length > 0 && !isReadOnly && (
+          <div className="bg-red-50 border-b border-red-150 px-6 py-3.5 flex items-center justify-between text-xs transition-all duration-250">
+            <div className="flex items-center gap-3 font-medium text-red-800">
+              <span className="inline-flex items-center justify-center bg-red-100 text-red-800 rounded-full h-5.5 w-5.5 font-bold font-mono text-[10px]">
+                {selectedIds.length}
+              </span>
+              <span className="font-sans font-medium">varieties selected for mass action</span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setSelectedIds([])}
+                className="px-3 md:px-4 py-2 rounded-full border border-stone-200 bg-white hover:bg-stone-50 text-stone-600 font-bold uppercase text-[9px] tracking-wider transition cursor-pointer"
+              >
+                Clear Selection
+              </button>
+              <button
+                type="button"
+                onClick={handleMassDelete}
+                className="px-4 md:px-5 py-2 rounded-full bg-red-650 hover:bg-red-700 text-white font-bold uppercase text-[9px] tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete Selected
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Catalog Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-editorial-primary/10 bg-editorial-bg text-[9px] uppercase tracking-[0.15em] font-sans font-bold text-editorial-primary/75">
+                {!isReadOnly && (
+                  <th className="py-4 px-6 md:px-8 w-12 text-center select-none">
+                    <input
+                      type="checkbox"
+                      checked={areAllVisibleSelected}
+                      onChange={handleToggleSelectAll}
+                      className="rounded border-stone-300 text-editorial-primary focus:ring-editorial-primary h-4.5 w-4.5 accent-editorial-primary cursor-pointer align-middle"
+                    />
+                  </th>
+                )}
                 <th className="py-4 px-6 md:px-8">Plant Details</th>
                 <th className="py-4 px-6">Size</th>
                 <th className="py-4 px-6 text-center">In Stock</th>
@@ -740,19 +827,20 @@ export default function InventoryView({
             <tbody className="divide-y divide-editorial-primary/5">
               {filteredInventory.length === 0 ? (
                 <tr>
-                  <td colSpan={isReadOnly ? 6 : 7} className="py-16 text-center text-sm text-editorial-primary/60 italic font-serif">
+                  <td colSpan={isReadOnly ? 6 : 8} className="py-16 text-center text-sm text-editorial-primary/60 italic font-serif">
                     No items match the filters. Add or import plants to populate the list!
                   </td>
                 </tr>
               ) : (
                 filteredInventory.map((item) => {
-                  const isLow = item.quantityAvailable <= 5;
+                  const isLow = item.quantityAvailable <= 100;
                   const itemValue = item.quantityAvailable * item.sellingPrice;
                   const isEditing = item.id === editingId;
 
                   if (isEditing) {
                     return (
                       <tr key={item.id} className="bg-editorial-accent/5 transition-colors">
+                        {!isReadOnly && <td className="py-3 px-6 text-center pb-3"></td>}
                         <td className="py-3 px-6 md:px-8">
                           <input
                             type="text"
@@ -845,6 +933,16 @@ export default function InventoryView({
                         isLow ? "bg-red-50/10" : ""
                       }`}
                     >
+                      {!isReadOnly && (
+                        <td className="py-4 px-6 md:px-8 text-center select-none">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(item.id)}
+                            onChange={() => handleToggleSelect(item.id)}
+                            className="rounded border-stone-300 text-editorial-primary focus:ring-editorial-primary h-4.5 w-4.5 accent-editorial-primary cursor-pointer align-middle"
+                          />
+                        </td>
+                      )}
                       <td className="py-4 px-6 md:px-8 font-serif font-semibold text-[14px] text-editorial-dark">
                         {item.plantName}
                       </td>

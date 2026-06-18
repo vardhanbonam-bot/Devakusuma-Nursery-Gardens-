@@ -1,17 +1,73 @@
 import React, { useState } from "react";
 import { InventoryItem, PurchaseRecord, SalesRecord } from "../types";
 import { PLANT_PEAK_SEASONS } from "../sampleData";
-import { TrendingUp, AlertTriangle, Activity, Award, Calendar, Trees, BarChart2, Lightbulb } from "lucide-react";
+import {
+  TrendingUp,
+  AlertTriangle,
+  Activity,
+  Award,
+  Calendar,
+  Trees,
+  BarChart2,
+  Lightbulb,
+  Search,
+  Edit2,
+  Trash2,
+  ArrowUpRight,
+  ArrowDownLeft,
+  X,
+  CheckCircle,
+  Save
+} from "lucide-react";
 
 interface DashboardViewProps {
   inventory: InventoryItem[];
   purchases: PurchaseRecord[];
   sales: SalesRecord[];
+  onDeleteSale?: (saleId: string) => void;
+  onUpdateSale?: (sale: SalesRecord) => void;
+  onDeletePurchase?: (purchaseId: string) => void;
+  onUpdatePurchase?: (purchase: PurchaseRecord) => void;
+  isReadOnly?: boolean;
 }
 
-export default function DashboardView({ inventory, purchases, sales }: DashboardViewProps) {
-  // Simple simulation day control for demo preview consistency
-  const [targetDateStr, setTargetDateStr] = useState("2026-06-11");
+export default function DashboardView({
+  inventory,
+  purchases,
+  sales,
+  onDeleteSale,
+  onUpdateSale,
+  onDeletePurchase,
+  onUpdatePurchase,
+  isReadOnly = false
+}: DashboardViewProps) {
+  // Fix Today's Revenue Glitch: default target date to the actual current system date dynamically!
+  const [targetDateStr, setTargetDateStr] = useState(() => {
+    return new Date().toISOString().split("T")[0];
+  });
+
+  // Recent Transactions filtering and search states
+  const [txFilter, setTxFilter] = useState<"all" | "sale" | "purchase">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Editing state
+  const [editingTx, setEditingTx] = useState<{
+    id: string;
+    type: "sale" | "purchase";
+    date: string;
+    personName: string; // customerName or supplierName
+    quantity: number;
+    price: number;
+    plantName: string;
+    plantSize: string;
+  } | null>(null);
+
+  // Deleting state
+  const [deletingTx, setDeletingTx] = useState<{
+    id: string;
+    type: "sale" | "purchase";
+    description: string;
+  } | null>(null);
 
   // Helper date parsing
   const getDashboardMetrics = () => {
@@ -139,7 +195,107 @@ export default function DashboardView({ inventory, purchases, sales }: Dashboard
     }
   });
 
-  const lowStockItems = inventory.filter((i) => i.quantityAvailable <= 5);
+  const lowStockItems = inventory.filter((i) => i.quantityAvailable <= 100);
+
+  // Assemble unified recent transactions listing
+  const allTransactions = [
+    ...sales.map((s) => ({
+      id: s.id,
+      type: "sale" as const,
+      date: s.saleDate,
+      plantName: s.plantName,
+      plantSize: s.plantSize,
+      personName: s.customerName,
+      quantity: s.quantitySold,
+      price: s.sellingPrice,
+      total: s.totalSaleValue,
+      invoiceOrCode: s.invoiceNumber,
+    })),
+    ...purchases.map((p) => ({
+      id: p.id,
+      type: "purchase" as const,
+      date: p.purchaseDate,
+      plantName: p.plantName,
+      plantSize: p.plantSize,
+      personName: p.supplierName,
+      quantity: p.quantityPurchased,
+      price: p.costPerUnit,
+      total: p.totalPurchaseCost,
+      invoiceOrCode: "SUP-PURCHASE",
+    })),
+  ].sort((a, b) => {
+    return new Date(b.date).getTime() - new Date(a.date).getTime();
+  });
+
+  // Filter transactions based on type filter and text search query
+  const filteredTransactions = allTransactions.filter((tx) => {
+    const matchesFilter = txFilter === "all" || tx.type === txFilter;
+    const matchesSearch =
+      tx.personName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tx.plantName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tx.invoiceOrCode.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
+
+  // Safe checks for item editing limit boundaries
+  const getEditingSaleStockLimit = () => {
+    if (!editingTx || editingTx.type !== "sale") return 9999;
+    const invItem = inventory.find(
+      (item) =>
+        item.plantName.toLowerCase() === editingTx.plantName.toLowerCase() &&
+        item.plantSize === editingTx.plantSize
+    );
+    const available = invItem ? invItem.quantityAvailable : 0;
+    const originalSale = sales.find((s) => s.id === editingTx.id);
+    const originalQty = originalSale ? originalSale.quantitySold : 0;
+    return available + originalQty;
+  };
+
+  const handleEditSaveSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTx) return;
+
+    if (editingTx.type === "sale") {
+      const limit = getEditingSaleStockLimit();
+      if (editingTx.quantity > limit) {
+        alert(`⛔ Insufficient stock! The maximum allowed sale quantity for this transaction is ${limit} units based on current live inventory.`);
+        return;
+      }
+      onUpdateSale?.({
+        id: editingTx.id,
+        invoiceNumber: sales.find((s) => s.id === editingTx.id)?.invoiceNumber || "",
+        saleDate: editingTx.date,
+        customerName: editingTx.personName,
+        plantName: editingTx.plantName,
+        plantSize: editingTx.plantSize,
+        quantitySold: editingTx.quantity,
+        sellingPrice: editingTx.price,
+        totalSaleValue: editingTx.quantity * editingTx.price
+      });
+    } else {
+      onUpdatePurchase?.({
+        id: editingTx.id,
+        purchaseDate: editingTx.date,
+        supplierName: editingTx.personName,
+        plantName: editingTx.plantName,
+        plantSize: editingTx.plantSize,
+        quantityPurchased: editingTx.quantity,
+        costPerUnit: editingTx.price,
+        totalPurchaseCost: editingTx.quantity * editingTx.price
+      });
+    }
+    setEditingTx(null);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deletingTx) return;
+    if (deletingTx.type === "sale") {
+      onDeleteSale?.(deletingTx.id);
+    } else {
+      onDeletePurchase?.(deletingTx.id);
+    }
+    setDeletingTx(null);
+  };
 
   return (
     <div className="space-y-8" id="dashboard-module">
@@ -166,7 +322,7 @@ export default function DashboardView({ inventory, purchases, sales }: Dashboard
         {/* Target simulation day selector in Editorial Style */}
         <div className="flex flex-col gap-1.5 bg-editorial-bg p-4 rounded-xl border border-editorial-primary/10 select-none">
           <label className="text-[9px] font-sans uppercase tracking-[0.15em] font-bold text-editorial-primary">
-            Target Analytics Date
+            Target Analytics Date (Today)
           </label>
           <input
             type="date"
@@ -292,7 +448,7 @@ export default function DashboardView({ inventory, purchases, sales }: Dashboard
           <div className="flex items-center justify-between border-b border-editorial-primary/10 pb-4 mb-4">
             <h3 className="text-sm uppercase tracking-wider font-bold text-editorial-dark font-sans flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-red-700/80" />
-              Depleted / Low Stock Warnings (≤ 5)
+              Depleted / Low Stock Warnings (≤ 100)
             </h3>
             <span className="bg-red-50 text-red-700 border border-red-200/40 text-[10px] font-sans uppercase tracking-wider px-2.5 py-0.5 rounded-full font-bold">
               {lowStockItems.length} alerts
@@ -377,6 +533,315 @@ export default function DashboardView({ inventory, purchases, sales }: Dashboard
           </div>
         </div>
       </div>
+
+      {/* 5. Master Recent Transactions Ledger */}
+      <div className="bg-white border border-editorial-primary/10 p-6 md:p-8 rounded-2xl shadow-xs" id="transactions-ledger">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-editorial-primary/10 pb-5 mb-6 gap-4">
+          <div className="space-y-1">
+            <h3 className="text-sm uppercase tracking-wider font-bold text-editorial-dark font-sans flex items-center gap-2">
+              <Activity className="w-4 h-4 text-editorial-primary" />
+              Recent Transactions Master Ledger
+            </h3>
+            <p className="text-xs text-editorial-primary/70 font-serif italic">
+              Review, edit figures, or cancel (delete) mistaken receipts which recalculates inventory level automatically.
+            </p>
+          </div>
+
+          {/* Filters and Search Bar combo */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Filter buttons */}
+            <div className="inline-flex bg-editorial-bg p-1 rounded-xl border border-editorial-primary/10 text-xs font-sans">
+              <button
+                type="button"
+                onClick={() => setTxFilter("all")}
+                className={`px-3 py-1.5 rounded-lg transition-colors tracking-wider uppercase text-[9px] font-bold ${
+                  txFilter === "all" ? "bg-white text-editorial-dark shadow-xs border border-editorial-primary/5" : "text-editorial-primary/70 hover:text-editorial-dark hover:bg-stone-50"
+                }`}
+              >
+                All Receipts
+              </button>
+              <button
+                type="button"
+                onClick={() => setTxFilter("sale")}
+                className={`px-3 py-1.5 rounded-lg transition-colors tracking-wider uppercase text-[9px] font-bold ${
+                  txFilter === "sale" ? "bg-white text-editorial-dark shadow-xs border border-editorial-primary/5" : "text-editorial-primary/70 hover:text-editorial-dark hover:bg-stone-50"
+                }`}
+              >
+                Sales (Out)
+              </button>
+              <button
+                type="button"
+                onClick={() => setTxFilter("purchase")}
+                className={`px-3 py-1.5 rounded-lg transition-colors tracking-wider uppercase text-[9px] font-bold ${
+                  txFilter === "purchase" ? "bg-white text-editorial-dark shadow-xs border border-editorial-primary/5" : "text-editorial-primary/70 hover:text-editorial-dark hover:bg-stone-50"
+                }`}
+              >
+                Purchases (In)
+              </button>
+            </div>
+
+            {/* Simple Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-editorial-primary/40" />
+              <input
+                type="text"
+                placeholder="Search Buyer, Supplier, Plant..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-3 py-1.5 bg-editorial-bg border border-editorial-primary/10 rounded-xl text-xs outline-none focus:border-editorial-primary/30 w-44 md:w-56"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Dynamic Ledger table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs font-sans border-collapse">
+            <thead>
+              <tr className="border-b border-editorial-primary/5 text-[9px] uppercase tracking-wider text-editorial-primary/60 font-bold">
+                <th className="py-3 px-4">Date</th>
+                <th className="py-3 px-4">Type</th>
+                <th className="py-3 px-4">Botanical Description & Size</th>
+                <th className="py-3 px-4">Client / Supplier Name</th>
+                <th className="py-3 px-4 text-center">Qty</th>
+                <th className="py-3 px-4 text-right">Unit Rate</th>
+                <th className="py-3 px-4 text-right">Total Net</th>
+                {!isReadOnly && <th className="py-3 px-4 text-center w-36">Actions</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-editorial-primary/5">
+              {filteredTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-16 text-center text-editorial-primary/40 italic font-serif">
+                    No matching botanical transactions found in active ledger records.
+                  </td>
+                </tr>
+              ) : (
+                filteredTransactions.map((tx) => (
+                  <tr key={tx.id} className="hover:bg-editorial-primary/5 transition duration-150 rounded">
+                    <td className="py-3.5 px-4 font-mono text-editorial-dark whitespace-nowrap">{tx.date}</td>
+                    <td className="py-3.5 px-4 whitespace-nowrap">
+                      {tx.type === "sale" ? (
+                        <span className="inline-flex items-center gap-1 bg-green-50 text-green-800 border border-green-200/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider select-none">
+                          <ArrowUpRight className="w-3 h-3 text-green-700 font-bold" />
+                          Sale Rec
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider select-none">
+                          <ArrowDownLeft className="w-3 h-3 text-amber-800 font-bold" />
+                          Purchase
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <div className="font-serif font-bold text-editorial-dark text-[13px]">{tx.plantName}</div>
+                      <div className="text-[10px] text-editorial-primary/60 font-mono mt-0.5">Size: {tx.plantSize} &bull; {tx.invoiceOrCode}</div>
+                    </td>
+                    <td className="py-3.5 px-4 font-serif italic text-editorial-dark">{tx.personName}</td>
+                    <td className="py-3.5 px-4 text-center font-mono font-bold text-editorial-dark">{tx.quantity}</td>
+                    <td className="py-3.5 px-4 text-right font-mono text-editorial-primary">₹{tx.price.toLocaleString("en-IN")}</td>
+                    <td className="py-3.5 px-4 text-right font-mono font-bold text-editorial-dark text-[13px]">₹{tx.total.toLocaleString("en-IN")}</td>
+                    {!isReadOnly && (
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingTx({
+                                id: tx.id,
+                                type: tx.type,
+                                date: tx.date,
+                                personName: tx.personName,
+                                quantity: tx.quantity,
+                                price: tx.price,
+                                plantName: tx.plantName,
+                                plantSize: tx.plantSize,
+                              })
+                            }
+                            className="p-1 px-2.5 rounded-lg hover:bg-editorial-primary/10 text-editorial-primary transition cursor-pointer flex items-center gap-1 font-bold text-[9px] uppercase tracking-wider bg-editorial-bg border border-editorial-primary/5 hover:border-editorial-primary/15"
+                            title="Edit this entry"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDeletingTx({
+                                id: tx.id,
+                                type: tx.type,
+                                description: `"${tx.plantName} (${tx.plantSize})" recorded on ${tx.date} for ₹${tx.total}`,
+                              })
+                            }
+                            className="p-1 px-2.5 rounded-lg hover:bg-red-50 text-red-700 transition cursor-pointer flex items-center gap-1 font-bold text-[9px] uppercase tracking-wider bg-red-50/10 border border-red-200/20"
+                            title="Delete entry"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Cancel
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* EDIT MODAL POPUP */}
+      {editingTx && (
+        <div className="fixed inset-0 bg-editorial-dark/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white w-full max-w-md rounded-2xl border border-editorial-primary/10 overflow-hidden shadow-2xl flex flex-col animate-fadeIn">
+            <div className="bg-editorial-primary text-white px-6 py-4 flex items-center justify-between">
+              <span className="font-sans uppercase tracking-wider text-xs font-bold flex items-center gap-1.5">
+                <Edit2 className="w-4 h-4 text-editorial-accent-light" />
+                Edit {editingTx.type === "sale" ? "Retail Sales Invoice" : "Supplier Procurement"}
+              </span>
+              <button
+                onClick={() => setEditingTx(null)}
+                className="hover:bg-editorial-dark/40 p-1.5 rounded-full transition cursor-pointer"
+              >
+                <X className="w-4 h-4 text-white" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSaveSubmit} className="p-6 md:p-8 space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Botanical Product (Type)</label>
+                <div className="font-serif font-bold text-editorial-dark bg-editorial-bg p-3 rounded-lg border border-editorial-primary/5">
+                  {editingTx.plantName} ({editingTx.plantSize})
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Transaction Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={editingTx.date}
+                    onChange={(e) => setEditingTx({ ...editingTx, date: e.target.value })}
+                    className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-2.5 text-editorial-dark"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">
+                    {editingTx.type === "sale" ? "Buyer / Customer" : "Wholesale Supplier"}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingTx.personName}
+                    onChange={(e) => setEditingTx({ ...editingTx, personName: e.target.value })}
+                    className="w-full text-xs font-serif bg-editorial-bg border border-editorial-primary/10 rounded-lg p-2.5 text-editorial-dark"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <span className="flex justify-between">
+                    <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Quantity</label>
+                    {editingTx.type === "sale" && (
+                      <span className="text-[9px] text-editorial-accent font-semibold">Max Limit: {getEditingSaleStockLimit()}</span>
+                    )}
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    required
+                    value={editingTx.quantity || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "" || /^\d+$/.test(val)) {
+                        setEditingTx({ ...editingTx, quantity: val === "" ? 0 : parseInt(val, 10) });
+                      }
+                    }}
+                    className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-2.5 text-editorial-dark"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Price Per Unit (₹)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    required
+                    value={editingTx.price || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "" || /^\d*\.?\d*$/.test(val)) {
+                        setEditingTx({ ...editingTx, price: val === "" ? 0 : parseFloat(val) });
+                      }
+                    }}
+                    className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-2.5 text-editorial-dark"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-editorial-bg p-4 rounded-xl border border-editorial-primary/10 flex justify-between items-center">
+                <span className="text-xs font-serif italic text-editorial-primary">Recomputed Bill Value:</span>
+                <span className="text-lg font-mono font-bold text-editorial-dark">₹{(editingTx.quantity * editingTx.price).toLocaleString("en-IN")}</span>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingTx(null)}
+                  className="flex-1 py-3 px-4 rounded-full font-serif font-bold text-stone-500 hover:text-stone-700 bg-stone-100 hover:bg-stone-200 text-xs transition uppercase tracking-wider"
+                >
+                  Discard
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 px-4 rounded-full bg-editorial-primary hover:bg-editorial-dark text-white font-bold text-xs uppercase tracking-widest transition flex items-center justify-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {deletingTx && (
+        <div className="fixed inset-0 bg-editorial-dark/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white w-full max-w-sm rounded-2xl border border-editorial-primary/10 p-6 space-y-6 shadow-2xl animate-scaleIn">
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto text-red-600 mb-2">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="font-serif font-bold text-[17px] text-stone-800">Cancel & Delete transaction?</h3>
+              <p className="text-xs text-stone-500 leading-relaxed font-serif italic">
+                You are deleting receipt context for <strong className="text-stone-700">{deletingTx.description}</strong>. Live catalog inventories will adjust to reverse this item automatically. This cannot be undone.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setDeletingTx(null)}
+                className="flex-1 py-3 rounded-full hover:bg-stone-100 text-stone-500 font-bold font-sans text-xs uppercase tracking-wide border border-stone-200/60"
+              >
+                Go Back
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="flex-1 py-3 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold font-sans text-xs uppercase tracking-wider"
+              >
+                Yes, Delete Rec
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
