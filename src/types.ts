@@ -1,0 +1,43 @@
+export interface InventoryItem {
+  id: string;
+  plantName: string;
+  plantSize: string; // e.g., "1 ft", "2 ft", "3 ft"
+  quantityAvailable: number;
+  sellingPrice: number;
+}
+
+export interface PurchaseRecord {
+  id: string;
+  purchaseDate: string; // YYYY-MM-DD
+  supplierName: string;
+  plantName: string;
+  plantSize: string;
+  quantityPurchased: number;
+  costPerUnit: number;
+  totalPurchaseCost: number;
+}
+
+export interface SalesRecord {
+  id: string;
+  invoiceNumber: string; // e.g., "INV-2026-0001"
+  saleDate: string; // YYYY-MM-DD
+  customerName: string;
+  plantName: string;
+  plantSize: string;
+  quantitySold: number;
+  sellingPrice: number;
+  totalSaleValue: number;
+}
+
+export interface SeasonalInfo {
+  plantName: string;
+  bestSeason: string; // e.g., "Monsoon", "Winter", "Summer", "Spring"
+}
+
+export interface NurseryUser {
+  id: string;
+  username: string;
+  role: string; // e.g. "Owner", "Manager", "Sales Staff"
+  pin: string; // 4-8 character PIN / password
+  avatarColor: string; // e.g., #5A5A40 for brand-aligned options
+}

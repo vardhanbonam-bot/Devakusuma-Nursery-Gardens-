@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Represents a single plant variety item in stock.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique inventory identifier" },
+        "plantName": { "type": "string", "description": "The name of the plant variety" },
+        "plantSize": { "type": "string", "description": "The size classification, e.g. 1 ft, 2 ft, Creeper" },
+        "quantityAvailable": { "type": "integer", "description": "Number of available units in stock" },
+        "sellingPrice": { "type": "number", "description": "The unit selling price in Rupees" }
+      },
+      "required": ["id", "plantName", "plantSize", "quantityAvailable", "sellingPrice"]
+    },
+    "PurchaseRecord": {
+      "title": "PurchaseRecord",
+      "description": "Represents a bulk plant purchase record from a supplier.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique purchase record identifier" },
+        "purchaseDate": { "type": "string", "format": "date", "description": "Date of purchase in YYYY-MM-DD" },
+        "supplierName": { "type": "string", "description": "Supplier's name" },
+        "plantName": { "type": "string", "description": "Name of the plant purchased" },
+        "plantSize": { "type": "string", "description": "Size of the plant purchased" },
+        "quantityPurchased": { "type": "integer", "description": "Quantity purchased in units" },
+        "costPerUnit": { "type": "number", "description": "Cost per single unit in Rupees" },
+        "totalPurchaseCost": { "type": "number", "description": "Total bulk purchase cost in Rupees" }
+      },
+      "required": ["id", "purchaseDate", "supplierName", "plantName", "plantSize", "quantityPurchased", "costPerUnit", "totalPurchaseCost"]
+    },
+    "SalesRecord": {
+      "title": "SalesRecord",
+      "description": "Represents a customer retail sales transaction record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique sales record identifier" },
+        "invoiceNumber": { "type": "string", "description": "Auto-incrementing invoice number, e.g. DS-INV-2026-001" },
+        "saleDate": { "type": "string", "format": "date", "description": "Date of sale in YYYY-MM-DD" },
+        "customerName": { "type": "string", "description": "Recipient or buyer name" },
+        "plantName": { "type": "string", "description": "Name of the plant variety sold" },
+        "plantSize": { "type": "string", "description": "Size of the plant variety sold" },
+        "quantitySold": { "type": "integer", "description": "Quantity sold in units" },
+        "sellingPrice": { "type": "number", "description": "Unit selling price in Rupees" },
+        "totalSaleValue": { "type": "number", "description": "Total check-out value in Rupees" }
+      },
+      "required": ["id", "invoiceNumber", "saleDate", "customerName", "plantName", "plantSize", "quantitySold", "sellingPrice", "totalSaleValue"]
+    },
+    "NurseryUser": {
+      "title": "NurseryUser",
+      "description": "Represents an authorized nursery team operator.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique operator user identifier" },
+        "username": { "type": "string", "description": "Operator display name" },
+        "role": { "type": "string", "description": "Assigned job role, e.g. Stalwart, Head - Manager, Assistant Manager" },
+        "pin": { "type": "string", "description": "Secure access PIN" },
+        "avatarColor": { "type": "string", "description": "Hex code of avatar styling color" }
+      },
+      "required": ["id", "username", "role", "pin", "avatarColor"]
+    }
+  },
+  "firestore": {
+    "/inventory/{itemId}": {
+      "schema": "#/entities/InventoryItem",
+      "description": "Live virtual plant store catalog database collection."
+    },
+    "/purchases/{purchaseId}": {
+      "schema": "#/entities/PurchaseRecord",
+      "description": "All completed supplier purchase invoices."
+    },
+    "/sales/{saleId}": {
+      "schema": "#/entities/SalesRecord",
+      "description": "All registered customer retail check-out tickets."
+    },
+    "/users/{userId}": {
+      "schema": "#/entities/NurseryUser",
+      "description": "Registered operators with authorization rules."
+    }
+  }
+}

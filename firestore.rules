@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper to check if database is matching custom id or default
+    match /inventory/{itemId} {
+      allow read, write: if true;
+    }
+    match /purchases/{purchaseId} {
+      allow read, write: if true;
+    }
+    match /sales/{saleId} {
+      allow read, write: if true;
+    }
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+  }
+}

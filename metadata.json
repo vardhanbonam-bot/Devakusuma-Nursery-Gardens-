@@ -1,0 +1,6 @@
+{
+  "name": "Devakusuma Nursery Gardens",
+  "description": "An earthy, simple management system to track live inventory, purchase/buy transactions, customer sales with PDF invoice downloads, and visual business insights.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
