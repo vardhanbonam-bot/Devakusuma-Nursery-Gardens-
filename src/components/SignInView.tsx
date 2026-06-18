@@ -235,9 +235,7 @@ export default function SignInView({ onSignInSuccess }: SignInViewProps) {
       
       {/* Top Brand Header */}
       <header className="max-w-md w-full mx-auto text-center pt-8 md:pt-12">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-editorial-primary text-white mb-4 shadow-sm">
-          <Sprout className="w-7 h-7" />
-        </div>
+        <img src="/logo.svg" alt="Devakusuma Logo" className="w-20 h-20 mx-auto mb-4 object-contain" />
         <h1 className="text-3xl md:text-4xl font-serif italic text-editorial-dark font-bold tracking-tight">
           Devakusuma Nursery
         </h1>
