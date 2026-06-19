@@ -524,75 +524,37 @@ export default function App() {
   if (showSplash) {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#1D211C] text-[#FAFAF8] overflow-hidden select-none font-sans">
-        {/* Subtle slow spinning ambient glow behind the seedling */}
+        {/* Subtle slow spinning ambient glow behind the logo */}
         <motion.div
           initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 0.16, scale: 1.25 }}
-          transition={{ duration: 2, ease: "easeOut" }}
+          animate={{ opacity: 0.22, scale: 1.25 }}
+          transition={{ duration: 2.2, ease: "easeOut" }}
           className="absolute w-[450px] h-[450px] rounded-full bg-[#A3B18A] blur-[110px] pointer-events-none"
         />
 
         <div className="relative z-10 flex flex-col items-center text-center max-w-sm px-6">
-          {/* Elegant Custom Blooming Leaf SVG with Motion */}
-          <div className="w-24 h-24 mb-6 flex items-center justify-center">
-            <svg viewBox="0 0 100 100" className="w-full h-full text-[#A3B18A]">
-              {/* Stem growing */}
-              <motion.path
-                d="M50,85 Q50,55 50,28"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3.5"
-                strokeLinecap="round"
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 1.2, ease: "easeInOut" }}
-              />
-
-              {/* Left Leaf Blooming */}
-              <motion.path
-                d="M48,58 C26,52 22,36 48,41"
-                fill="currentColor"
-                fillOpacity="0.18"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                initial={{ pathLength: 0, scale: 0, originX: "48px", originY: "58px" }}
-                animate={{ pathLength: 1, scale: 1 }}
-                transition={{ delay: 0.6, duration: 0.9, ease: [0.34, 1.56, 0.64, 1] }}
-              />
-
-              {/* Right Leaf Blooming */}
-              <motion.path
-                d="M52,43 C74,38 78,22 52,27"
-                fill="currentColor"
-                fillOpacity="0.25"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                initial={{ pathLength: 0, scale: 0, originX: "52px", originY: "43px" }}
-                animate={{ pathLength: 1, scale: 1 }}
-                transition={{ delay: 1.0, duration: 0.85, ease: [0.34, 1.56, 0.64, 1] }}
-              />
-
-              {/* Tiny morning dew drop */}
-              <motion.circle
-                cx="50"
-                cy="28"
-                r="3"
-                fill="#72E088"
-                initial={{ opacity: 0, scale: 0, y: -8 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={{ delay: 1.5, duration: 0.45, ease: "easeOut" }}
-              />
-            </svg>
+          {/* Actual Elegant Devakusuma Logo with Premium Spring Animation */}
+          <div className="w-44 h-44 mb-6 flex items-center justify-center relative">
+            <motion.img
+              src="/logo.svg"
+              alt="Devakusuma Nursery Gardens Logo"
+              initial={{ opacity: 0, scale: 0.8, rotate: -3 }}
+              animate={{ opacity: 1, scale: 1, rotate: 0 }}
+              transition={{
+                duration: 1.5,
+                ease: [0.34, 1.56, 0.64, 1],
+                delay: 0.1
+              }}
+              className="w-full h-full object-contain filter drop-shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
+            />
           </div>
 
           {/* Main Brand Title Stagger */}
           <motion.h2
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.7, ease: "easeOut" }}
-            className="font-serif italic text-3xl font-bold tracking-tight text-white"
+            transition={{ delay: 0.4, duration: 0.7, ease: "easeOut" }}
+            className="font-serif italic text-3.5xl font-bold tracking-tight text-white"
           >
             Devakusuma
           </motion.h2>
