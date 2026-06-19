@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { ExpenseRecord, ExpenseCategory } from "../types";
+import * as XLSX from "xlsx";
 import { 
   Plus, 
   Trash2, 
@@ -16,7 +17,13 @@ import {
   TrendingDown, 
   Layers,
   Banknote,
-  PiggyBank
+  PiggyBank,
+  Upload,
+  FileSpreadsheet,
+  FileText,
+  RefreshCw,
+  AlertCircle,
+  HelpCircle
 } from "lucide-react";
 
 interface ExpensesViewProps {
@@ -60,6 +67,25 @@ export default function ExpensesView({
 
   // Edit Expense modal state
   const [editingExpense, setEditingExpense] = useState<ExpenseRecord | null>(null);
+
+  // Bulk Import States
+  const [entryMode, setEntryMode] = useState<"manual" | "bulk">("manual");
+  const [rawPasteData, setRawPasteData] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [importPreview, setImportPreview] = useState<Omit<ExpenseRecord, "id" | "createdAt" | "updatedAt">[]>([]);
+  const [importError, setImportError] = useState("");
+  const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
+  const [parsedRows, setParsedRows] = useState<any[][]>([]);
+  const [columnMappings, setColumnMappings] = useState<{ [key: string]: number }>({
+    date: -1,
+    category: -1,
+    description: -1,
+    amount: -1,
+    paymentMode: -1,
+    paidTo: -1,
+  });
+  const [isImportingProgress, setIsImportingProgress] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Default hardcoded categories for backup, combined with Firestore-saved custom categories
   const defaultCategories = useMemo(() => [
@@ -125,6 +151,388 @@ export default function ExpensesView({
     setAmount("");
     setPaidTo("");
     alert("Expense added successfully!");
+  };
+
+  // ==========================================
+  // BULK IMPORT SHEET PROCESSING SECTION (XLS, XLSX, CSV, TSV)
+  // ==========================================
+
+  // Process data from raw text string or ArrayBuffer
+  const parseSpreadsheetData = (dataInput: ArrayBuffer | string) => {
+    try {
+      setImportError("");
+      const workbook = typeof dataInput === "string" 
+        ? XLSX.read(dataInput, { type: "string" })
+        : XLSX.read(dataInput, { type: "array" });
+
+      const firstSheetName = workbook.SheetNames[0];
+      if (!firstSheetName) {
+        setImportError("The uploaded file contains no sheets.");
+        setImportPreview([]);
+        return;
+      }
+
+      const worksheet = workbook.Sheets[firstSheetName];
+      // Convert to 2D array of raw values
+      const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
+      if (rows.length === 0) {
+        setImportError("The selected spreadsheet is empty.");
+        setImportPreview([]);
+        return;
+      }
+
+      let headerIndex = 0;
+      let headers: string[] = [];
+
+      // Scan first 10 rows for a heading row containing recognizable headers
+      for (let i = 0; i < Math.min(rows.length, 10); i++) {
+        const row = rows[i];
+        if (row && row.length > 0) {
+          const hasIdentifiableKeywords = row.some(cell => {
+            const str = String(cell || "").toLowerCase();
+            return (
+              str.includes("date") || 
+              str.includes("amount") || 
+              str.includes("cost") || 
+              str.includes("category") || 
+              str.includes("description") || 
+              str.includes("paid")
+            );
+          });
+          if (hasIdentifiableKeywords) {
+            headerIndex = i;
+            headers = row.map(cell => String(cell || "").trim());
+            break;
+          }
+        }
+      }
+
+      // Fallback: If no keywords identified, use the first row with at least 2 non-empty values
+      if (headers.length === 0) {
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i];
+          if (r && r.filter(c => String(c || "").trim() !== "").length >= 2) {
+            headerIndex = i;
+            headers = r.map(c => String(c || "").trim());
+            break;
+          }
+        }
+      }
+
+      if (headers.length === 0) {
+        setImportError("No readable columns or headers found in this file.");
+        setImportPreview([]);
+        return;
+      }
+
+      // Initial automatic header matcher configuration based on column labels
+      const mappings: { [key: string]: number } = {
+        date: -1,
+        category: -1,
+        description: -1,
+        amount: -1,
+        paymentMode: -1,
+        paidTo: -1,
+      };
+
+      headers.forEach((header, colIndex) => {
+        const lower = header.toLowerCase();
+        if (lower.includes("date") || lower.includes("dt") || lower === "when" || lower === "day") {
+          mappings.date = colIndex;
+        } else if (lower.includes("cat") || lower === "classification" || lower === "type" || lower === "group") {
+          mappings.category = colIndex;
+        } else if (
+          lower.includes("desc") || 
+          lower.includes("detail") || 
+          lower.includes("note") || 
+          lower.includes("particular") || 
+          lower.includes("item") ||
+          lower.includes("purpose")
+        ) {
+          mappings.description = colIndex;
+        } else if (
+          lower.includes("amount") || 
+          lower.includes("cost") || 
+          lower.includes("rupee") || 
+          lower === "rs" || 
+          lower === "val" || 
+          lower === "price" || 
+          lower === "spent" || 
+          lower === "inr" ||
+          lower.includes("outflow")
+        ) {
+          mappings.amount = colIndex;
+        } else if (lower.includes("mode") || lower.includes("payment") || lower === "pay" || lower === "mop" || lower === "instrument") {
+          mappings.paymentMode = colIndex;
+        } else if (
+          lower.includes("paid") || 
+          lower.includes("to") || 
+          lower.includes("vendor") || 
+          lower.includes("recipient") || 
+          lower === "supplier" || 
+          lower === "party" ||
+          lower.includes("person")
+        ) {
+          mappings.paidTo = colIndex;
+        }
+      });
+
+      // Quick fallback matching based on default order if crucial columns weren't matched
+      if (mappings.amount === -1) {
+        if (headers.length >= 4) {
+          mappings.date = 0;
+          mappings.category = 1;
+          mappings.description = 2;
+          mappings.amount = 3;
+          if (headers.length >= 5) mappings.paymentMode = 4;
+          if (headers.length >= 6) mappings.paidTo = 5;
+        } else {
+          setImportError("Could not identify an 'Amount' column. Please make sure column headers are present.");
+          setImportPreview([]);
+          return;
+        }
+      }
+
+      setSheetHeaders(headers);
+      setParsedRows(rows.slice(headerIndex + 1));
+      setColumnMappings(mappings);
+      
+      // Calculate preview states
+      generatePreview(rows.slice(headerIndex + 1), mappings);
+
+    } catch (err) {
+      console.error(err);
+      setImportError("Error processing spreadsheet. Ensure columns are correctly structured.");
+      setImportPreview([]);
+    }
+  };
+
+  // Convert 2D cells representing spreadsheet lines into structured ExpenseRecords
+  const generatePreview = (rows: any[][], currentMappings: typeof columnMappings) => {
+    const list: Omit<ExpenseRecord, "id" | "createdAt" | "updatedAt">[] = [];
+
+    for (const r of rows) {
+      if (!r || r.length === 0) continue;
+
+      // Filter out entirely empty blank spacer rows
+      const isRowBlank = r.every(cell => cell === undefined || cell === null || String(cell).trim() === "");
+      if (isRowBlank) continue;
+
+      const rawDate = currentMappings.date >= 0 ? r[currentMappings.date] : undefined;
+      const rawCategory = currentMappings.category >= 0 ? r[currentMappings.category] : undefined;
+      const rawDesc = currentMappings.description >= 0 ? r[currentMappings.description] : undefined;
+      const rawAmount = currentMappings.amount >= 0 ? r[currentMappings.amount] : undefined;
+      const rawPaymentMode = currentMappings.paymentMode >= 0 ? r[currentMappings.paymentMode] : undefined;
+      const rawPaidTo = currentMappings.paidTo >= 0 ? r[currentMappings.paidTo] : undefined;
+
+      // 1. Process Date with multi-format and serial converters
+      let finalDate = new Date().toISOString().split("T")[0];
+      if (rawDate !== undefined && rawDate !== null && String(rawDate).trim() !== "") {
+        if (typeof rawDate === "number" && rawDate > 30000 && rawDate < 60000) {
+          const utcDays = Math.floor(rawDate - 25569);
+          const dateObj = new Date(utcDays * 86400 * 1000);
+          const tzOffset = dateObj.getTimezoneOffset() * 60000;
+          const localDate = new Date(dateObj.getTime() + tzOffset);
+          finalDate = localDate.toISOString().split("T")[0];
+        } else {
+          const dStr = String(rawDate).trim();
+          const parsedD = new Date(dStr);
+          if (!isNaN(parsedD.getTime())) {
+            finalDate = parsedD.toISOString().split("T")[0];
+          } else {
+            // Check manual DMY formats e.g. 18-06-2026 or 18/06/2026
+            const match = dStr.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+            if (match) {
+              const day = parseInt(match[1], 10);
+              const month = parseInt(match[2], 10) - 1;
+              const year = parseInt(match[3], 10);
+              const dObj = new Date(year, month, day);
+              if (!isNaN(dObj.getTime())) {
+                finalDate = dObj.toISOString().split("T")[0];
+              }
+            }
+          }
+        }
+      }
+
+      // 2. Process Category with fallback
+      let finalCategory = "Miscellaneous";
+      if (rawCategory !== undefined && rawCategory !== null && String(rawCategory).trim() !== "") {
+        finalCategory = String(rawCategory).trim();
+      }
+
+      // 3. Process Amount (stripping characters)
+      let finalAmount = 0;
+      if (rawAmount !== undefined && rawAmount !== null) {
+        const cleanedAmt = String(rawAmount).replace(/[^\d.-]/g, "");
+        const parsedAmt = parseFloat(cleanedAmt);
+        if (!isNaN(parsedAmt)) {
+          finalAmount = parsedAmt;
+        }
+      }
+
+      // 4. Process Payment Mode selection
+      let finalMode = "Cash";
+      if (rawPaymentMode !== undefined && rawPaymentMode !== null && String(rawPaymentMode).trim() !== "") {
+        const modeStr = String(rawPaymentMode).trim();
+        const modeLower = modeStr.toLowerCase();
+        if (modeLower.includes("cash")) finalMode = "Cash";
+        else if (modeLower.includes("upi") || modeLower.includes("phone") || modeLower.includes("paytm") || modeLower.includes("gpay")) finalMode = "UPI";
+        else if (modeLower.includes("bank") || modeLower.includes("transfer") || modeLower.includes("neft") || modeLower.includes("imps")) finalMode = "Bank transfer";
+        else finalMode = "Other";
+      }
+
+      const finalDesc = rawDesc !== undefined && rawDesc !== null ? String(rawDesc).trim() : "";
+      const finalPaidTo = rawPaidTo !== undefined && rawPaidTo !== null ? String(rawPaidTo).trim() : "";
+
+      list.push({
+        date: finalDate,
+        category: finalCategory,
+        description: finalDesc,
+        amount: finalAmount,
+        paymentMode: finalMode,
+        paidTo: finalPaidTo,
+      });
+    }
+
+    setImportPreview(list);
+  };
+
+  const handleManualMappingChange = (field: string, columnIndex: number) => {
+    const updated = {
+      ...columnMappings,
+      [field]: columnIndex
+    };
+    setColumnMappings(updated);
+    generatePreview(parsedRows, updated);
+  };
+
+  // Drag handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    const isSupported = ["xlsx", "xls", "csv", "txt", "tsv"].includes(extension || "");
+    if (!isSupported) {
+      setImportError("Unsupported file format. Please drop a valid .xlsx, .xls, .csv, or .txt file.");
+      return;
+    }
+
+    const reader = new FileReader();
+    if (extension === "xlsx" || extension === "xls") {
+      reader.onload = (event) => {
+        const buffer = event.target?.result as ArrayBuffer;
+        parseSpreadsheetData(buffer);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = (event) => {
+        const text = event.target?.result as string;
+        setRawPasteData(text);
+        parseSpreadsheetData(text);
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const handlePasteChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setRawPasteData(val);
+    parseSpreadsheetData(val);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    const reader = new FileReader();
+
+    if (extension === "xlsx" || extension === "xls") {
+      reader.onload = (event) => {
+        const buffer = event.target?.result as ArrayBuffer;
+        parseSpreadsheetData(buffer);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = (event) => {
+        const text = event.target?.result as string;
+        setRawPasteData(text);
+        parseSpreadsheetData(text);
+      };
+      reader.readAsText(file);
+    }
+    e.target.value = ""; // let users re-upload same file
+  };
+
+  const handleDeletePreviewRow = (idx: number) => {
+    const updated = [...importPreview];
+    updated.splice(idx, 1);
+    setImportPreview(updated);
+  };
+
+  const handleSetAllPaymentModes = (mode: string) => {
+    const updated = importPreview.map(item => ({
+      ...item,
+      paymentMode: mode
+    }));
+    setImportPreview(updated);
+  };
+
+  const handleConfirmBulkImport = async () => {
+    if (importPreview.length === 0) return;
+
+    try {
+      setIsImportingProgress(true);
+
+      // Extract new categories dynamically from sheet and save first
+      const newCatsFound: string[] = [];
+      importPreview.forEach(item => {
+        const catName = item.category.trim();
+        if (catName && !allCategoriesList.some(c => c.toLowerCase() === catName.toLowerCase())) {
+          if (!newCatsFound.some(c => c.toLowerCase() === catName.toLowerCase())) {
+            newCatsFound.push(catName);
+          }
+        }
+      });
+
+      for (const cat of newCatsFound) {
+        onAddCategory(cat);
+      }
+
+      // Save each expense in real-time
+      // Items will sink and sync automatically in other logged-in tablets instantly!
+      for (const item of importPreview) {
+        onAddExpense(item);
+      }
+
+      alert(`Success! Imported ${importPreview.length} expense rows into the nursery ledger.`);
+      
+      // Reset Import view
+      setImportPreview([]);
+      setParsedRows([]);
+      setSheetHeaders([]);
+      setRawPasteData("");
+      setEntryMode("manual");
+    } catch (err) {
+      console.error(err);
+      alert("An error occurred during bulk importing. Please review file format.");
+    } finally {
+      setIsImportingProgress(false);
+    }
   };
 
   // Main Submit handler (Update Expense)
@@ -378,179 +786,479 @@ export default function ExpensesView({
             </div>
           ) : (
             <div className="bg-white p-6 md:p-8 border border-editorial-primary/10 rounded-2xl shadow-sm space-y-6">
-              <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-                <h3 className="font-serif text-lg font-bold text-editorial-dark">Record New Expenditure</h3>
-                <span className="text-[10px] font-mono text-stone-400 font-semibold">Ledger form v1.0</span>
+              {/* Double Tab Entry Selector */}
+              <div className="flex border-b border-stone-100 pb-3 items-center justify-between">
+                <div className="flex gap-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEntryMode("manual");
+                      setImportPreview([]);
+                      setParsedRows([]);
+                      setSheetHeaders([]);
+                      setRawPasteData("");
+                    }}
+                    className={`font-serif text-[15px] font-bold transition-all relative pb-2 -mb-3.5 cursor-pointer ${
+                      entryMode === "manual" 
+                        ? "text-editorial-primary border-b-2 border-editorial-primary font-extrabold" 
+                        : "text-stone-400 hover:text-stone-600"
+                    }`}
+                  >
+                    Record Expenditure
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEntryMode("bulk")}
+                    className={`font-serif text-[15px] font-bold transition-all relative pb-2 -mb-3.5 cursor-pointer flex items-center gap-1.5 ${
+                      entryMode === "bulk" 
+                        ? "text-editorial-primary border-b-2 border-editorial-primary font-extrabold" 
+                        : "text-stone-400 hover:text-stone-600"
+                    }`}
+                  >
+                    Bulk Import (Excel / CSV)
+                    <span className="bg-emerald-100 text-emerald-800 text-[9px] px-1.5 py-0.5 rounded-full font-sans uppercase font-extrabold tracking-wider">New</span>
+                  </button>
+                </div>
+                <span className="text-[10px] font-mono text-stone-400 font-semibold">Ledger form v1.2</span>
               </div>
 
-              {/* Toggle new category input or general expense form */}
-              {showCustomCategoryInput ? (
-                <form onSubmit={handleAddNewCategorySubmit} className="bg-stone-50 p-4 border border-editorial-primary/15 rounded-xl space-y-4">
-                  <div className="flex items-center gap-1.5 text-xs text-editorial-dark font-bold font-sans uppercase tracking-wider">
-                    <PlusCircle className="w-4 h-4 text-editorial-primary" />
-                    <span>Create Custom Category</span>
-                  </div>
-                  <p className="text-xs text-stone-500 font-serif italic">
-                    Type a new financial expense category. It will persist in Firestore for later reuse.
-                  </p>
-                  <div className="space-y-1.5">
-                    <input
-                      required
-                      type="text"
-                      placeholder="e.g. Nursery Nursery Bags, Greenhouse Nets"
-                      value={customCategoryName}
-                      onChange={(e) => setCustomCategoryName(e.target.value)}
-                      className="w-full text-xs font-mono bg-white border border-editorial-primary/15 rounded-lg p-3 text-editorial-dark focus:outline-none"
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setShowCustomCategoryInput(false)}
-                      className="px-3 py-2 rounded-lg border border-stone-200 text-stone-600 font-bold hover:bg-stone-100 transition cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-editorial-primary hover:bg-editorial-dark text-white rounded-lg font-bold transition cursor-pointer"
-                    >
-                      Save Category
-                    </button>
-                  </div>
-                </form>
-              ) : null}
-
-              {!showCustomCategoryInput && (
-                <form onSubmit={handleSubmitExpense} className="space-y-5" id="add-expense-form">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    
-                    {/* Date picker */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Expense Date *</label>
-                      <div className="relative">
-                        <Calendar className="absolute left-3 top-3 h-4 w-4 text-editorial-primary/40" />
+              {/* ----------------- MANUAL ENTRY MODE ----------------- */}
+              {entryMode === "manual" && (
+                <>
+                  {/* Toggle new category input or general expense form */}
+                  {showCustomCategoryInput ? (
+                    <form onSubmit={handleAddNewCategorySubmit} className="bg-stone-50 p-4 border border-editorial-primary/15 rounded-xl space-y-4">
+                      <div className="flex items-center gap-1.5 text-xs text-editorial-dark font-bold font-sans uppercase tracking-wider">
+                        <PlusCircle className="w-4 h-4 text-editorial-primary" />
+                        <span>Create Custom Category</span>
+                      </div>
+                      <p className="text-xs text-stone-500 font-serif italic">
+                        Type a new financial expense category. It will persist in Firestore for later reuse.
+                      </p>
+                      <div className="space-y-1.5">
                         <input
-                          type="date"
                           required
-                          value={date}
-                          onChange={(e) => setDate(e.target.value)}
-                          className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg pl-10 pr-3 py-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
+                          type="text"
+                          placeholder="e.g. Nursery Nursery Bags, Greenhouse Nets"
+                          value={customCategoryName}
+                          onChange={(e) => setCustomCategoryName(e.target.value)}
+                          className="w-full text-xs font-mono bg-white border border-editorial-primary/15 rounded-lg p-3 text-editorial-dark focus:outline-none"
                         />
                       </div>
-                    </div>
-
-                    {/* Expense Category Dropdown */}
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between items-center">
-                        <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Expense Category *</label>
+                      <div className="flex justify-end gap-2 text-xs">
                         <button
                           type="button"
-                          onClick={() => setShowCustomCategoryInput(true)}
-                          className="text-[10px] font-sans font-extrabold text-editorial-primary hover:underline hover:text-editorial-dark flex items-center gap-0.5 cursor-pointer"
+                          onClick={() => setShowCustomCategoryInput(false)}
+                          className="px-3 py-2 rounded-lg border border-stone-200 text-stone-600 font-bold hover:bg-stone-100 transition cursor-pointer"
                         >
-                          <PlusCircle className="w-3 h-3" />
-                          <span>Custom Category</span>
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-4 py-2 bg-editorial-primary hover:bg-editorial-dark text-white rounded-lg font-bold transition cursor-pointer"
+                        >
+                          Save Category
                         </button>
                       </div>
-                      <select
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                        className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
-                      >
-                        {allCategoriesList.map((catName) => (
-                          <option key={catName} value={catName}>
-                            {catName}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    </form>
+                  ) : null}
 
+                  {!showCustomCategoryInput && (
+                    <form onSubmit={handleSubmitExpense} className="space-y-5" id="add-expense-form">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        
+                        {/* Date picker */}
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Expense Date *</label>
+                          <div className="relative">
+                            <Calendar className="absolute left-3 top-3 h-4 w-4 text-editorial-primary/40" />
+                            <input
+                              type="date"
+                              required
+                              value={date}
+                              onChange={(e) => setDate(e.target.value)}
+                              className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg pl-10 pr-3 py-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Expense Category Dropdown */}
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center">
+                            <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Expense Category *</label>
+                            <button
+                              type="button"
+                              onClick={() => setShowCustomCategoryInput(true)}
+                              className="text-[10px] font-sans font-extrabold text-editorial-primary hover:underline hover:text-editorial-dark flex items-center gap-0.5 cursor-pointer"
+                            >
+                              <PlusCircle className="w-3 h-3" />
+                              <span>Custom Category</span>
+                            </button>
+                          </div>
+                          <select
+                            value={category}
+                            onChange={(e) => setCategory(e.target.value)}
+                            className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
+                          >
+                            {allCategoriesList.map((catName) => (
+                              <option key={catName} value={catName}>
+                                {catName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        
+                        {/* Amount field */}
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Amount Spent (₹) *</label>
+                          <div className="relative">
+                            <span className="absolute left-3.5 top-3.5 text-xs text-editorial-primary/50 font-bold">₹</span>
+                            <input
+                              required
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="e.g. 5000"
+                              value={amount}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === "" || /^\d*\.?\d*$/.test(val)) {
+                                  setAmount(val);
+                                }
+                              }}
+                              className="w-full text-xs font-mono font-bold bg-editorial-bg border border-editorial-primary/10 rounded-lg pl-8 pr-3 py-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Payment mode select dropdown */}
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Payment Mode *</label>
+                          <select
+                            value={paymentMode}
+                            onChange={(e) => setPaymentMode(e.target.value)}
+                            className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
+                          >
+                            <option value="Cash">Cash</option>
+                            <option value="UPI">UPI (PhonePe, GPay, Paytm)</option>
+                            <option value="Bank transfer">Bank transfer (NEFT, IMPS)</option>
+                            <option value="Other">Other Mode</option>
+                          </select>
+                        </div>
+
+                      </div>
+
+                      {/* Optional Paid To & Description */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        
+                        {/* Paid To (vendor Name) */}
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Paid To (Vendor / Person)</label>
+                          <div className="relative">
+                            <User className="absolute left-3 top-3 h-4 w-4 text-editorial-primary/40" />
+                            <input
+                              type="text"
+                              placeholder="e.g. Gowthami Soils Wholesale"
+                              value={paidTo}
+                              onChange={(e) => setPaidTo(e.target.value)}
+                              className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg pl-10 pr-3 py-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Description */}
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Description / Ledger Notes</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Bought 15 cubic meters Red soil mix"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
+                          />
+                        </div>
+
+                      </div>
+
+                      <div className="pt-2">
+                        <button
+                          type="submit"
+                          className="w-full bg-editorial-primary hover:bg-editorial-dark text-white font-bold text-xs uppercase tracking-widest py-3.5 rounded-full transition flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:shadow-md font-sans"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add Expense Entry
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </>
+              )}
+
+              {/* ----------------- BULK IMPORT MODE ----------------- */}
+              {entryMode === "bulk" && (
+                <div className="space-y-6">
+                  {/* Help guideline boxes */}
+                  <div className="p-4 bg-stone-50 rounded-xl border border-stone-200 text-xs font-sans text-stone-605 leading-relaxed space-y-2">
+                    <p className="font-extrabold text-stone-700 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-650" />
+                      Spreadsheet Import Guidelines
+                    </p>
+                    <p>
+                      Supports standard MS Excel files (<code>.xlsx</code>, <code>.xls</code>), <code>.csv</code>, and plain text tab-separated <code>.tsv</code> copied/pasted files. Your sheet columns will automatically adapt, but should ideally contain the following values:
+                    </p>
+                    <ul className="grid grid-cols-2 gap-2 mt-2 font-mono text-[10px] pl-2 text-stone-550">
+                      <li className="flex items-center gap-1">⏱️ <strong>Date</strong> (YYYY-MM-DD or DD-MM-YYYY)</li>
+                      <li className="flex items-center gap-1">🏷️ <strong>Category</strong> (Wages, Electricity, Soil, etc.)</li>
+                      <li className="flex items-center gap-1">💸 <strong>Amount</strong> (Expense value)</li>
+                      <li className="flex items-center gap-1">📝 <strong>Description</strong> (Optional notes)</li>
+                      <li className="flex items-center gap-1">💳 <strong>Payment Mode</strong> (Cash, UPI, Bank transfer)</li>
+                      <li className="flex items-center gap-1">👤 <strong>Paid To</strong> (Vendor / person)</li>
+                    </ul>
                   </div>
 
+                  {/* Drag-and-upload plus Paste Split row */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    
-                    {/* Amount field */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Amount Spent (₹) *</label>
-                      <div className="relative">
-                        <span className="absolute left-3.5 top-3.5 text-xs text-editorial-primary/50 font-bold">₹</span>
-                        <input
-                          required
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="e.g. 5000"
-                          value={amount}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val === "" || /^\d*\.?\d*$/.test(val)) {
-                              setAmount(val);
-                            }
-                          }}
-                          className="w-full text-xs font-mono font-bold bg-editorial-bg border border-editorial-primary/10 rounded-lg pl-8 pr-3 py-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Payment mode select dropdown */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Payment Mode *</label>
-                      <select
-                        value={paymentMode}
-                        onChange={(e) => setPaymentMode(e.target.value)}
-                        className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
-                      >
-                        <option value="Cash">Cash</option>
-                        <option value="UPI">UPI (PhonePe, GPay, Paytm)</option>
-                        <option value="Bank transfer">Bank transfer (NEFT, IMPS)</option>
-                        <option value="Other">Other Mode</option>
-                      </select>
-                    </div>
-
-                  </div>
-
-                  {/* Optional Paid To & Description */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    
-                    {/* Paid To (vendor Name) */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Paid To (Vendor / Person)</label>
-                      <div className="relative">
-                        <User className="absolute left-3 top-3 h-4 w-4 text-editorial-primary/40" />
-                        <input
-                          type="text"
-                          placeholder="e.g. Gowthami Soils Wholesale"
-                          value={paidTo}
-                          onChange={(e) => setPaidTo(e.target.value)}
-                          className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg pl-10 pr-3 py-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Description */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Description / Ledger Notes</label>
+                    {/* Drag & drop upload box */}
+                    <div
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center min-h-[140px] ${
+                        isDragging
+                          ? "border-emerald-600 bg-emerald-50/40"
+                          : "border-stone-200 hover:border-editorial-primary hover:bg-stone-50/50"
+                      }`}
+                    >
                       <input
-                        type="text"
-                        placeholder="e.g. Bought 15 cubic meters Red soil mix"
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
+                        type="file"
+                        ref={fileInputRef}
+                        className="hidden"
+                        accept=".xlsx,.xls,.csv,.txt,.tsv"
+                        onChange={handleFileUpload}
+                      />
+                      <Upload className="w-8 h-8 text-stone-400 mb-2" />
+                      <p className="text-xs font-sans font-extrabold text-stone-800">
+                        Drag & Drop Sheet File Here
+                      </p>
+                      <p className="text-[10px] text-stone-400 mt-1">
+                        or click to browse (.xlsx, .xls, .csv, .txt)
+                      </p>
+                    </div>
+
+                    {/* Copy and paste direct cells */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-stone-500">
+                        Or Copy & Paste Spreadsheet Table Directly:
+                      </label>
+                      <textarea
+                        rows={5}
+                        placeholder="Paste cells copied directly from Excel rows here..."
+                        value={rawPasteData}
+                        onChange={handlePasteChange}
+                        className="w-full text-[11px] font-mono p-3 bg-stone-50 border border-stone-200 rounded-xl focus:bg-white focus:outline-none leading-relaxed"
                       />
                     </div>
-
                   </div>
 
-                  <div className="pt-2">
-                    <button
-                      type="submit"
-                      className="w-full bg-editorial-primary hover:bg-editorial-dark text-white font-bold text-xs uppercase tracking-widest py-3.5 rounded-full transition flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:shadow-md font-sans"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Add Expense Entry
-                    </button>
-                  </div>
-                </form>
+                  {/* Error display if is invalid */}
+                  {importError && (
+                    <div className="p-3 bg-rose-50 text-rose-800 border-2 border-rose-100 rounded-xl flex items-center gap-2 text-xs font-sans font-semibold">
+                      <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                      <span>{importError}</span>
+                    </div>
+                  )}
+
+                  {/* Manual column indices overrides (Only if headers found) */}
+                  {sheetHeaders.length > 0 && (
+                    <div className="p-4 bg-stone-50 border border-stone-200 rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase font-bold tracking-widest text-[#5C6E5C] font-sans">
+                          ⚙️ Configure Column Mapping Overrides
+                        </span>
+                        <span className="text-[10px] text-stone-400 italic">
+                          Change if column names did not auto-match
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                        {[
+                          { key: "date", label: "Date *" },
+                          { key: "category", label: "Category *" },
+                          { key: "description", label: "Description" },
+                          { key: "amount", label: "Amount *" },
+                          { key: "paymentMode", label: "Pay Mode" },
+                          { key: "paidTo", label: "Paid To" }
+                        ].map(field => (
+                          <div key={field.key} className="space-y-1">
+                            <span className="block text-[9px] uppercase tracking-wider text-stone-500 font-bold font-sans">
+                              {field.label}
+                            </span>
+                            <select
+                              value={columnMappings[field.key]}
+                              onChange={(e) => handleManualMappingChange(field.key, Number(e.target.value))}
+                              className="w-full p-2 text-[10px] font-mono bg-white border border-stone-200 rounded-lg outline-none font-semibold text-editorial-dark"
+                            >
+                              <option value="-1">-- Unmapped --</option>
+                              {sheetHeaders.map((header, idx) => (
+                                <option key={idx} value={idx}>
+                                  Col {idx + 1}: {header.length > 20 ? header.substring(0,18) + ".." : header}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Import preview list of records */}
+                  {importPreview.length > 0 && (
+                    <div className="space-y-4 animate-fadeIn">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-light pb-2">
+                        <span className="text-xs uppercase font-serif tracking-widest font-extrabold text-editorial-primary">
+                          🔍 Prepared Import Preview ({importPreview.length} items parsed)
+                        </span>
+                        
+                        {/* Quick Action Payment Mode Batch Overrides */}
+                        <div className="flex items-center gap-1.5 text-xs text-stone-600">
+                          <label className="text-[10px] uppercase tracking-wider font-sans font-bold">Set all payments to:</label>
+                          <select
+                            onChange={(e) => {
+                              if (e.target.value) handleSetAllPaymentModes(e.target.value);
+                            }}
+                            className="p-1 text-[11px] font-semibold bg-stone-100 border border-stone-200 rounded-md outline-none"
+                            defaultValue=""
+                          >
+                            <option value="" disabled>-- Choose override --</option>
+                            <option value="Cash">Cash</option>
+                            <option value="UPI">UPI</option>
+                            <option value="Bank transfer">Bank transfer</option>
+                            <option value="Other">Other Mode</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Preview Rows Table list */}
+                      <div className="overflow-x-auto max-h-[280px] border border-stone-200 rounded-xl shadow-inner">
+                        <table className="w-full text-left border-collapse text-[11px] font-sans">
+                          <thead>
+                            <tr className="bg-stone-50 text-stone-500 border-b border-stone-200 font-extrabold text-[9px] uppercase tracking-wider">
+                              <th className="py-2.5 px-3">#</th>
+                              <th className="py-2.5 px-3">Date</th>
+                              <th className="py-2.5 px-3">Category classification</th>
+                              <th className="py-2.5 px-3">Ledger Details</th>
+                              <th className="py-2.5 px-3">Receipt Paid To</th>
+                              <th className="py-2.5 px-3">Mode</th>
+                              <th className="py-2.5 px-3 text-right">Amount Outflow</th>
+                              <th className="py-2.5 px-3 text-center">Delete</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {importPreview.map((item, idx) => {
+                              const isUnidentifiedCategory = !allCategoriesList.some(
+                                c => c.toLowerCase() === item.category.toLowerCase()
+                              );
+                              const isAmountInvalid = isNaN(item.amount) || item.amount <= 0;
+
+                              return (
+                                <tr key={idx} className="border-b border-stone-100 hover:bg-stone-50/55 transition-colors">
+                                  <td className="py-2 px-3 text-stone-400 font-mono text-[9px]">
+                                    {idx + 1}
+                                  </td>
+                                  <td className="py-2 px-3 font-mono">
+                                    {item.date}
+                                  </td>
+                                  <td className="py-2 px-3 font-medium">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span>{item.category}</span>
+                                      {isUnidentifiedCategory && item.category.trim() !== "" && (
+                                        <span className="bg-amber-50 text-amber-800 border border-amber-200 text-[8px] font-extrabold uppercase px-1 py-0.5 rounded-sm shrink-0">
+                                          New Cat
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="py-2 px-3 text-stone-605 max-w-[150px] truncate" title={item.description}>
+                                    {item.description || <span className="text-stone-300 italic font-serif">No notes</span>}
+                                  </td>
+                                  <td className="py-2 px-3 text-stone-550 max-w-[110px] truncate" title={item.paidTo}>
+                                    {item.paidTo || <span className="text-stone-300 italic font-serif">--</span>}
+                                  </td>
+                                  <td className="py-2 px-3">
+                                    <span className="font-mono bg-stone-100/70 border border-stone-200/50 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                                      {item.paymentMode}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-right font-mono font-bold">
+                                    <span className={isAmountInvalid ? "text-rose-600 bg-rose-50 px-1 py-0.5 rounded" : "text-editorial-dark"}>
+                                      ₹{item.amount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeletePreviewRow(idx)}
+                                      className="p-1 rounded hover:bg-rose-50 text-stone-400 hover:text-rose-600 transition cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Cumulative visual indicators */}
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-stone-50 border border-stone-200 rounded-xl">
+                        <div className="flex items-center gap-4 text-xs font-serif italic text-stone-600">
+                          <p>
+                            Summary: <strong>{importPreview.length} records</strong> prepared for importing.
+                          </p>
+                          <p>
+                            Total outflow: <strong className="font-sans text-editorial-dark font-extrabold">
+                              {formatRupees(importPreview.reduce((acc, current) => acc + (current.amount || 0), 0))}
+                            </strong>
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setImportPreview([]);
+                              setParsedRows([]);
+                              setSheetHeaders([]);
+                              setRawPasteData("");
+                              setEntryMode("manual");
+                            }}
+                            className="px-4 py-2 text-xs border border-stone-300 text-stone-600 font-extrabold hover:bg-stone-100 rounded-full transition cursor-pointer font-sans"
+                          >
+                            Reset Upload
+                          </button>
+                          
+                          <button
+                            type="button"
+                            disabled={isImportingProgress || importPreview.length === 0}
+                            onClick={handleConfirmBulkImport}
+                            className="px-6 py-2 bg-editorial-primary text-white font-extrabold text-xs uppercase tracking-wider rounded-full transition hover:bg-editorial-dark cursor-pointer shadow-sm hover:shadow-md flex items-center justify-center gap-1.5 flex-1 sm:flex-none"
+                          >
+                            {isImportingProgress ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Check className="w-3.5 h-3.5" />
+                            )}
+                            Import live to Ledger
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}

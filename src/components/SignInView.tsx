@@ -278,10 +278,14 @@ export default function SignInView({ onSignInSuccess }: SignInViewProps) {
                   initial={{ scale: 0.8 }}
                   animate={{ scale: [1, 1.06, 1] }}
                   transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                  className="w-18 h-18 rounded-full flex items-center justify-center text-white font-sans text-xl font-bold font-semibold shadow-md shrink-0"
-                  style={{ backgroundColor: loggedInUser.avatarColor }}
+                  className="w-18 h-18 rounded-full flex items-center justify-center text-white font-sans text-xl font-bold font-semibold shadow-md shrink-0 overflow-hidden"
+                  style={{ backgroundColor: loggedInUser.avatarImage ? undefined : loggedInUser.avatarColor }}
                 >
-                  {loggedInUser.username.slice(0, 2).toUpperCase()}
+                  {loggedInUser.avatarImage ? (
+                    <img src={loggedInUser.avatarImage} alt={loggedInUser.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    loggedInUser.username.slice(0, 2).toUpperCase()
+                  )}
                 </motion.div>
               </div>
 
@@ -483,10 +487,14 @@ export default function SignInView({ onSignInSuccess }: SignInViewProps) {
                       className="group flex items-center gap-4 bg-editorial-bg hover:bg-white border-2 border-editorial-primary/5 hover:border-editorial-primary/30 p-4 rounded-2xl cursor-pointer transition-all duration-300 hover:shadow-[0_4px_16px_rgba(0,0,0,0.03)] flex-1 relative"
                     >
                       <div
-                        className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold font-sans text-sm shadow-xs shrink-0"
-                        style={{ backgroundColor: u.avatarColor }}
+                        className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold font-sans text-sm shadow-xs shrink-0 overflow-hidden"
+                        style={{ backgroundColor: u.avatarImage ? undefined : u.avatarColor }}
                       >
-                        {initials}
+                        {u.avatarImage ? (
+                          <img src={u.avatarImage} alt={u.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          initials
+                        )}
                       </div>
                       <div className="min-w-0 pr-8">
                         <h3 className="text-sm font-serif font-bold text-editorial-dark leading-tight truncate group-hover:text-editorial-primary">
@@ -545,10 +553,14 @@ export default function SignInView({ onSignInSuccess }: SignInViewProps) {
               {/* Core User Identity header inside PIN Authenticator */}
               <div className="text-center mb-6">
                 <div
-                  className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold font-sans text-xl shadow-xs mx-auto mb-3"
-                  style={{ backgroundColor: selectedUser.avatarColor }}
+                  className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold font-sans text-xl shadow-xs mx-auto mb-3 overflow-hidden"
+                  style={{ backgroundColor: selectedUser.avatarImage ? undefined : selectedUser.avatarColor }}
                 >
-                  {selectedUser.username.slice(0, 2).toUpperCase()}
+                  {selectedUser.avatarImage ? (
+                    <img src={selectedUser.avatarImage} alt={selectedUser.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    selectedUser.username.slice(0, 2).toUpperCase()
+                  )}
                 </div>
                 <h3 className="text-lg font-serif font-bold text-editorial-dark">
                   Welcome back, {selectedUser.username}

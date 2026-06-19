@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { InventoryItem, PurchaseRecord, SalesRecord, NurseryUser, ExpenseRecord, ExpenseCategory } from "./types";
 import { INITIAL_INVENTORY, INITIAL_PURCHASES, INITIAL_SALES } from "./sampleData";
 import { motion, AnimatePresence } from "motion/react";
-import { fetchCollection, saveItem, removeItem, clearCollection } from "./lib/firebase";
+import { fetchCollection, saveItem, removeItem, clearCollection, subscribeCollection } from "./lib/firebase";
 
 // Components
 import DashboardView from "./components/DashboardView";
@@ -11,6 +11,7 @@ import PurchaseView from "./components/PurchaseView";
 import SalesView from "./components/SalesView";
 import ExpensesView from "./components/ExpensesView";
 import SignInView from "./components/SignInView";
+import BrandingModal from "./components/BrandingModal";
 
 // Icons
 import { Sprout, LayoutDashboard, Trees, ShoppingCart, ShoppingBag, Leaf, HelpCircle, HardDrive, LogOut, User, AlertTriangle, Landmark } from "lucide-react";
@@ -32,6 +33,11 @@ export default function App() {
   const [sales, setSales] = useState<SalesRecord[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+  const [usersList, setUsersList] = useState<NurseryUser[]>([]);
+  const [appLogo, setAppLogo] = useState<string>(() => {
+    return localStorage.getItem("devakusuma_logo_url") || "/logo.svg";
+  });
+  const [showBrandingModal, setShowBrandingModal] = useState(false);
 
   // Navigation tab tracker
   const [activeTab, setActiveTab ] = useState<"dashboard" | "inventory" | "purchase" | "sales" | "expenses">("dashboard");
@@ -43,6 +49,13 @@ export default function App() {
         currentUser.role.toLowerCase() === "stalwart" ||
         currentUser.role.toLowerCase() === "owner" ||
         currentUser.role.toLowerCase() === "head - manager"
+      )
+    : false;
+
+  const canEditBranding = currentUser
+    ? (
+        currentUser.username.toLowerCase() === "sri rama satya" ||
+        currentUser.username.toLowerCase() === "surendra bonam"
       )
     : false;
 
@@ -124,6 +137,8 @@ export default function App() {
     }
 
     // 4. Async Firestore Sync
+    const unsubscribes: (() => void)[] = [];
+
     const syncFromFirestore = async () => {
       try {
         const [dbInventory, dbPurchases, dbSales, dbExpenses, dbCategories] = await Promise.all([
@@ -201,12 +216,83 @@ export default function App() {
             }
           }
         }
+
+        // Setup real-time subscribers after initial seed/fill checks
+        const u1 = subscribeCollection<InventoryItem>("inventory", (items) => {
+          if (items) {
+            setInventory(items);
+            localStorage.setItem("devakusuma_inventory", JSON.stringify(items));
+          }
+        });
+        const u2 = subscribeCollection<PurchaseRecord>("purchases", (items) => {
+          if (items) {
+            setPurchases(items);
+            localStorage.setItem("devakusuma_purchases", JSON.stringify(items));
+          }
+        });
+        const u3 = subscribeCollection<SalesRecord>("sales", (items) => {
+          if (items) {
+            setSales(items);
+            localStorage.setItem("devakusuma_sales", JSON.stringify(items));
+          }
+        });
+        const u4 = subscribeCollection<ExpenseRecord>("expenses", (items) => {
+          if (items) {
+            setExpenses(items);
+            localStorage.setItem("devakusuma_expenses", JSON.stringify(items));
+          }
+        });
+        const u5 = subscribeCollection<ExpenseCategory>("expenseCategories", (items) => {
+          if (items) {
+            setCategories(items);
+            localStorage.setItem("devakusuma_categories", JSON.stringify(items));
+          }
+        });
+        const u6 = subscribeCollection<NurseryUser>("users", (items) => {
+          if (items) {
+            setUsersList(items);
+            localStorage.setItem("devakusuma_users", JSON.stringify(items));
+            
+            // Sync current user session so that if avatar/details are changed by other accounts, it reflects in this browser
+            const storedSession = localStorage.getItem("devakusuma_session_user");
+            if (storedSession) {
+              try {
+                const current = JSON.parse(storedSession) as NurseryUser;
+                const freshSelf = items.find((u) => u.username === current.username);
+                if (freshSelf) {
+                  setCurrentUser(freshSelf);
+                  localStorage.setItem("devakusuma_session_user", JSON.stringify(freshSelf));
+                }
+              } catch (e) {
+                console.error("Error syncing current user with real-time users:", e);
+              }
+            }
+          }
+        });
+        const u7 = subscribeCollection<{ id: string; logoUrl?: string }>("settings", (items) => {
+          if (items) {
+            const brandingDoc = items.find((item) => item.id === "branding");
+            if (brandingDoc && brandingDoc.logoUrl) {
+              setAppLogo(brandingDoc.logoUrl);
+              localStorage.setItem("devakusuma_logo_url", brandingDoc.logoUrl);
+            } else {
+              setAppLogo("/logo.svg");
+              localStorage.removeItem("devakusuma_logo_url");
+            }
+          }
+        });
+
+        unsubscribes.push(u1, u2, u3, u4, u5, u6, u7);
       } catch (err) {
         console.warn("Could not sync records from Firestore, using offline cache:", err);
       }
     };
 
     syncFromFirestore();
+
+    return () => {
+      unsubscribes.forEach((unsub) => unsub());
+    };
   }, []);
 
   // System Handler: Manual Adding of Single Plant
@@ -355,6 +441,24 @@ export default function App() {
     localStorage.setItem("devakusuma_purchases", JSON.stringify(updatedPurchases));
     saveItem("purchases", newPurchase.id, newPurchase).catch(console.error);
 
+    // Automatically create a corresponding business expense record
+    const associatedExpense: ExpenseRecord = {
+      id: `exp-${newPurchase.id}`,
+      date: record.purchaseDate,
+      category: "Stock Purchase",
+      description: `Stock Purchase: ${record.quantityPurchased}x ${record.plantName} (${record.plantSize})`,
+      amount: record.totalPurchaseCost,
+      paymentMode: "Other",
+      paidTo: record.supplierName,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const updatedExpenses = [...expenses, associatedExpense];
+    setExpenses(updatedExpenses);
+    localStorage.setItem("devakusuma_expenses", JSON.stringify(updatedExpenses));
+    saveItem("expenses", associatedExpense.id, associatedExpense).catch(console.error);
+
     // Update inventory stock (Increase quantity)
     const matchIdx = inventory.findIndex(
       (inv) =>
@@ -494,6 +598,13 @@ export default function App() {
     localStorage.setItem("devakusuma_purchases", JSON.stringify(updatedPurchases));
     removeItem("purchases", purchaseId).catch(console.error);
 
+    // Automatically remove corresponding expense record
+    const associatedExpenseId = `exp-${purchaseId}`;
+    const updatedExpenses = expenses.filter((e) => e.id !== associatedExpenseId);
+    setExpenses(updatedExpenses);
+    localStorage.setItem("devakusuma_expenses", JSON.stringify(updatedExpenses));
+    removeItem("expenses", associatedExpenseId).catch(console.error);
+
     // Rollback Inventory: subtract the purchased quantity
     const matchedIdx = inventory.findIndex(
       (inv) =>
@@ -526,6 +637,41 @@ export default function App() {
     setPurchases(updatedPurchases);
     localStorage.setItem("devakusuma_purchases", JSON.stringify(updatedPurchases));
     saveItem("purchases", updatedPurchase.id, updatedPurchase).catch(console.error);
+
+    // Automatically update the corresponding expense record in sync
+    const associatedExpenseId = `exp-${updatedPurchase.id}`;
+    const existingExpense = expenses.find((e) => e.id === associatedExpenseId);
+    if (existingExpense) {
+      const updatedExpense: ExpenseRecord = {
+        ...existingExpense,
+        date: updatedPurchase.purchaseDate,
+        description: `Stock Purchase: ${updatedPurchase.quantityPurchased}x ${updatedPurchase.plantName} (${updatedPurchase.plantSize})`,
+        amount: updatedPurchase.totalPurchaseCost,
+        paidTo: updatedPurchase.supplierName,
+        updatedAt: new Date().toISOString(),
+      };
+      const updatedExpenses = expenses.map((e) => (e.id === associatedExpenseId ? updatedExpense : e));
+      setExpenses(updatedExpenses);
+      localStorage.setItem("devakusuma_expenses", JSON.stringify(updatedExpenses));
+      saveItem("expenses", updatedExpense.id, updatedExpense).catch(console.error);
+    } else {
+      // Re-create the expense record if missing
+      const associatedExpense: ExpenseRecord = {
+        id: associatedExpenseId,
+        date: updatedPurchase.purchaseDate,
+        category: "Stock Purchase",
+        description: `Stock Purchase: ${updatedPurchase.quantityPurchased}x ${updatedPurchase.plantName} (${updatedPurchase.plantSize})`,
+        amount: updatedPurchase.totalPurchaseCost,
+        paymentMode: "Other",
+        paidTo: updatedPurchase.supplierName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const updatedExpenses = [...expenses, associatedExpense];
+      setExpenses(updatedExpenses);
+      localStorage.setItem("devakusuma_expenses", JSON.stringify(updatedExpenses));
+      saveItem("expenses", associatedExpense.id, associatedExpense).catch(console.error);
+    }
 
     // Sync Inventory stock
     const matchedIdx = inventory.findIndex(
@@ -770,7 +916,22 @@ export default function App() {
       {/* Editorial Navigation Toolbar */}
       <nav className="h-16 md:h-20 px-6 md:px-10 border-b border-editorial-primary/20 flex items-center justify-between bg-white/60 backdrop-blur-md sticky top-0 z-20 shrink-0">
         <div className="flex items-center gap-3">
-          <img src="/logo.svg" alt="Devakusuma Logo" className="w-10 h-10 md:w-14 md:h-14 object-contain" />
+          {canEditBranding ? (
+            <div 
+              className="relative group cursor-pointer" 
+              onClick={() => setShowBrandingModal(true)}
+              title="Click to edit App Logo & member display pictures"
+            >
+              <img src={appLogo} alt="Devakusuma Logo" className="w-10 h-10 md:w-14 md:h-14 object-contain transition-all group-hover:scale-105 group-hover:brightness-95" referrerPolicy="no-referrer" />
+              <div className="absolute -bottom-1 -right-1 bg-editorial-primary text-white p-1 rounded-full shadow-xs opacity-80 group-hover:opacity-100 transition-opacity">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </div>
+            </div>
+          ) : (
+            <img src={appLogo} alt="Devakusuma Logo" className="w-10 h-10 md:w-14 md:h-14 object-contain" referrerPolicy="no-referrer" />
+          )}
           <div>
             <span className="text-sm md:text-2xl font-bold tracking-tight text-editorial-dark font-serif italic">Devakusuma Nursery Gardens</span>
             <span className="text-[10px] font-sans uppercase tracking-widest text-editorial-primary/70 ml-2 font-medium">Farm OS</span>
@@ -846,11 +1007,18 @@ export default function App() {
           {/* Operator Badge and Sign-Out in Header */}
           <div className="flex items-center gap-3">
             <div 
-              className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold font-sans shadow-xs shrink-0 select-none" 
-              style={{ backgroundColor: currentUser.avatarColor }}
-              title={`${currentUser.username} (${currentUser.role})`}
+              className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold font-sans shadow-xs shrink-0 select-none overflow-hidden ${
+                canEditBranding ? "cursor-pointer hover:ring-2 hover:ring-editorial-primary/45 transition-all" : ""
+              }`} 
+              style={{ backgroundColor: currentUser.avatarImage ? undefined : currentUser.avatarColor }}
+              title={`${currentUser.username} (${currentUser.role}) - Click to customize`}
+              onClick={canEditBranding ? () => setShowBrandingModal(true) : undefined}
             >
-              {currentUser.username.slice(0, 2).toUpperCase()}
+              {currentUser.avatarImage ? (
+                <img src={currentUser.avatarImage} alt={currentUser.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                currentUser.username.slice(0, 2).toUpperCase()
+              )}
             </div>
             <div className="text-left shrink-0">
               <span className="block text-[11px] font-sans font-bold text-editorial-dark leading-none">
@@ -860,27 +1028,44 @@ export default function App() {
                 {currentUser.role}
               </span>
             </div>
+            {canEditBranding && (
+              <button
+                type="button"
+                onClick={() => setShowBrandingModal(true)}
+                className="p-1.5 rounded-lg border border-editorial-primary/15 hover:border-editorial-primary hover:bg-stone-50 text-editorial-primary/70 transition cursor-pointer"
+                title="Edit Logo & Display Pictures"
+              >
+                <User className="w-3.5 h-3.5 text-editorial-primary" />
+              </button>
+            )}
             <button
-              type="button"
-              id="desktop-sign-out-btn"
-              onClick={handleSignOut}
-              className="p-1.5 rounded-lg border border-editorial-primary/15 hover:border-red-200 hover:bg-red-50 text-editorial-primary/70 hover:text-red-700 transition cursor-pointer"
-              title="Sign Out / Switch Operator"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile logout/user indicator */}
-        <div className="flex md:hidden items-center gap-2">
-          <div 
-            className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold font-sans shadow-xs shrink-0 select-none" 
-            style={{ backgroundColor: currentUser.avatarColor }}
-            title={currentUser.username}
-          >
-            {currentUser.username.slice(0, 2).toUpperCase()}
-          </div>
+               type="button"
+               id="desktop-sign-out-btn"
+               onClick={handleSignOut}
+               className="p-1.5 rounded-lg border border-editorial-primary/15 hover:border-red-200 hover:bg-red-50 text-editorial-primary/70 hover:text-red-700 transition cursor-pointer"
+               title="Sign Out / Switch Operator"
+             >
+               <LogOut className="w-3.5 h-3.5" />
+             </button>
+           </div>
+         </div>
+ 
+         {/* Mobile logout/user indicator */}
+         <div className="flex md:hidden items-center gap-2">
+           <div 
+             className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold font-sans shadow-xs shrink-0 select-none overflow-hidden ${
+               canEditBranding ? "cursor-pointer ring-1 ring-editorial-primary/10 hover:ring-2 hover:ring-editorial-primary/40 transition-all" : ""
+             }`} 
+             style={{ backgroundColor: currentUser.avatarImage ? undefined : currentUser.avatarColor }}
+             title={`${currentUser.username} - Tap to customize`}
+             onClick={canEditBranding ? () => setShowBrandingModal(true) : undefined}
+           >
+             {currentUser.avatarImage ? (
+               <img src={currentUser.avatarImage} alt={currentUser.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+             ) : (
+               currentUser.username.slice(0, 2).toUpperCase()
+             )}
+           </div>
           <button
             type="button"
             onClick={handleSignOut}
@@ -1139,6 +1324,17 @@ export default function App() {
               </div>
             </motion.div>
           </div>
+        )}
+
+        {/* Branding & Profile Customization Modal */}
+        {showBrandingModal && currentUser && (
+          <BrandingModal
+            isOpen={showBrandingModal}
+            onClose={() => setShowBrandingModal(false)}
+            currentUser={currentUser}
+            usersList={usersList}
+            appLogo={appLogo}
+          />
         )}
       </AnimatePresence>
     </div>

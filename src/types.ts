@@ -40,6 +40,7 @@ export interface NurseryUser {
   role: string; // e.g. "Owner", "Manager", "Sales Staff"
   pin: string; // 4-8 character PIN / password
   avatarColor: string; // e.g., #5A5A40 for brand-aligned options
+  avatarImage?: string; // base64 or custom image URL
 }
 
 export interface ExpenseRecord {

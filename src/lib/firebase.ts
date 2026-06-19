@@ -1,5 +1,5 @@
 import { initializeApp, getApp, getApps } from "firebase/app";
-import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, writeBatch } from "firebase/firestore";
+import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, writeBatch, onSnapshot } from "firebase/firestore";
 import config from "../../firebase-applet-config.json";
 
 // Initialize Firebase
@@ -108,4 +108,26 @@ export async function clearCollection(collectionName: string, ids: string[]): Pr
     console.error(`Error clearing collection ${collectionName}:`, error);
     handleFirestoreError(error, OperationType.DELETE, collectionName);
   }
+}
+
+// Generic real-time subscription helper to stream snapshot updates
+export function subscribeCollection<T>(
+  collectionName: string,
+  onUpdate: (items: T[]) => void,
+  onError?: (error: any) => void
+): () => void {
+  return onSnapshot(
+    collection(db, collectionName),
+    (snapshot) => {
+      const items: T[] = [];
+      snapshot.forEach((doc) => {
+        items.push({ id: doc.id, ...doc.data() } as T);
+      });
+      onUpdate(items);
+    },
+    (error) => {
+      console.error(`Error subscribing to ${collectionName}:`, error);
+      if (onError) onError(error);
+    }
+  );
 }
