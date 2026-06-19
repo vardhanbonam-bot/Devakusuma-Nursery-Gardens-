@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { InventoryItem, PurchaseRecord, SalesRecord } from "../types";
+import { InventoryItem, PurchaseRecord, SalesRecord, ExpenseRecord } from "../types";
 import { PLANT_PEAK_SEASONS } from "../sampleData";
 import {
   TrendingUp,
@@ -17,13 +17,15 @@ import {
   ArrowDownLeft,
   X,
   CheckCircle,
-  Save
+  Save,
+  Banknote
 } from "lucide-react";
 
 interface DashboardViewProps {
   inventory: InventoryItem[];
   purchases: PurchaseRecord[];
   sales: SalesRecord[];
+  expenses?: ExpenseRecord[];
   onDeleteSale?: (saleId: string) => void;
   onUpdateSale?: (sale: SalesRecord) => void;
   onDeletePurchase?: (purchaseId: string) => void;
@@ -35,6 +37,7 @@ export default function DashboardView({
   inventory,
   purchases,
   sales,
+  expenses = [],
   onDeleteSale,
   onUpdateSale,
   onDeletePurchase,
@@ -47,13 +50,13 @@ export default function DashboardView({
   });
 
   // Recent Transactions filtering and search states
-  const [txFilter, setTxFilter] = useState<"all" | "sale" | "purchase">("all");
+  const [txFilter, setTxFilter] = useState<"all" | "sale" | "purchase" | "expense">("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   // Editing state
   const [editingTx, setEditingTx] = useState<{
     id: string;
-    type: "sale" | "purchase";
+    type: "sale" | "purchase" | "expense";
     date: string;
     personName: string; // customerName or supplierName
     quantity: number;
@@ -65,7 +68,7 @@ export default function DashboardView({
   // Deleting state
   const [deletingTx, setDeletingTx] = useState<{
     id: string;
-    type: "sale" | "purchase";
+    type: "sale" | "purchase" | "expense";
     description: string;
   } | null>(null);
 
@@ -112,10 +115,58 @@ export default function DashboardView({
       }
     });
 
-    return { revenueToday, revenueWeek, revenueMonth, revenueYear };
+    let expensesToday = 0;
+    let expensesWeek = 0;
+    let expensesMonth = 0;
+    let expensesYear = 0;
+
+    expenses.forEach((e) => {
+      const expDateObj = new Date(e.date);
+      const val = Number(e.amount || 0);
+
+      // Today
+      if (e.date === todayStr) {
+        expensesToday += val;
+      }
+
+      // Week
+      if (expDateObj >= sevenDaysAgo && expDateObj <= today) {
+        expensesWeek += val;
+      }
+
+      // Month
+      if (expDateObj.getMonth() === currMonth && expDateObj.getFullYear() === currYear) {
+        expensesMonth += val;
+      }
+
+      // Year
+      if (expDateObj.getFullYear() === currYear) {
+        expensesYear += val;
+      }
+    });
+
+    return { 
+      revenueToday, 
+      revenueWeek, 
+      revenueMonth, 
+      revenueYear,
+      expensesToday,
+      expensesWeek,
+      expensesMonth,
+      expensesYear
+    };
   };
 
-  const { revenueToday, revenueWeek, revenueMonth, revenueYear } = getDashboardMetrics();
+  const { 
+    revenueToday, 
+    revenueWeek, 
+    revenueMonth, 
+    revenueYear,
+    expensesToday,
+    expensesWeek,
+    expensesMonth,
+    expensesYear
+  } = getDashboardMetrics();
 
   // 1. Calculate Best Sellers by Qty & Revenue
   const plantSummaries: { [key: string]: { qty: number; rev: number } } = {};
@@ -222,6 +273,18 @@ export default function DashboardView({
       price: p.costPerUnit,
       total: p.totalPurchaseCost,
       invoiceOrCode: "SUP-PURCHASE",
+    })),
+    ...expenses.map((e) => ({
+      id: e.id,
+      type: "expense" as const,
+      date: e.date,
+      plantName: `EXPENSE: ${e.category}`,
+      plantSize: e.paymentMode,
+      personName: e.paidTo || "General",
+      quantity: 1,
+      price: e.amount,
+      total: e.amount,
+      invoiceOrCode: e.description || "No description",
     })),
   ].sort((a, b) => {
     return new Date(b.date).getTime() - new Date(a.date).getTime();
@@ -364,6 +427,33 @@ export default function DashboardView({
             <div className="text-3xl font-serif font-medium">₹{revenueYear.toLocaleString("en-IN")}</div>
           </div>
           <span className="text-[9px] text-editorial-accent-light/70 font-mono mt-4 uppercase tracking-[0.1em]">Ledger Totals</span>
+        </div>
+      </div>
+
+      {/* Standalone Expenses Ledger Summary */}
+      <div className="bg-[#FFF5F5] border border-rose-200/40 p-5 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-5 shadow-xs">
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-rose-800 text-[10px] font-sans uppercase tracking-[0.1em] font-extrabold">
+            <Banknote className="w-4 h-4 text-rose-700" />
+            Standalone Business Expenses Ledger
+          </div>
+          <p className="text-xs text-stone-600 font-serif italic">
+            This module operates as a separate pocket purely for tracking costs. It does not affect your core retail revenue numbers.
+          </p>
+        </div>
+        <div className="flex items-center gap-4 flex-wrap w-full md:w-auto">
+          <div className="bg-white border border-rose-200/20 px-4 py-2.5 rounded-xl min-w-[120px] text-center shadow-[0_1px_2px_rgba(0,0,0,0.025)]">
+            <span className="text-[9px] font-sans uppercase tracking-wider text-stone-500 font-semibold block mb-0.5">Today</span>
+            <span className="font-mono text-stone-800 text-sm font-bold">₹{expensesToday.toLocaleString("en-IN")}</span>
+          </div>
+          <div className="bg-white border border-rose-200/20 px-4 py-2.5 rounded-xl min-w-[120px] text-center shadow-[0_1px_2px_rgba(0,0,0,0.025)]">
+            <span className="text-[9px] font-sans uppercase tracking-wider text-stone-500 font-semibold block mb-0.5">This Month</span>
+            <span className="font-mono text-stone-800 text-sm font-bold">₹{expensesMonth.toLocaleString("en-IN")}</span>
+          </div>
+          <div className="bg-white border border-rose-200/20 px-4 py-2.5 rounded-xl min-w-[120px] text-center shadow-[0_1px_2px_rgba(0,0,0,0.025)]">
+            <span className="text-[9px] font-sans uppercase tracking-wider text-stone-500 font-semibold block mb-0.5">Annual Cost</span>
+            <span className="font-mono text-rose-800 text-sm font-bold">₹{expensesYear.toLocaleString("en-IN")}</span>
+          </div>
         </div>
       </div>
 
@@ -578,6 +668,15 @@ export default function DashboardView({
               >
                 Purchases (In)
               </button>
+              <button
+                type="button"
+                onClick={() => setTxFilter("expense")}
+                className={`px-3 py-1.5 rounded-lg transition-colors tracking-wider uppercase text-[9px] font-bold ${
+                  txFilter === "expense" ? "bg-white text-editorial-dark shadow-xs border border-editorial-primary/5" : "text-editorial-primary/70 hover:text-editorial-dark hover:bg-stone-50"
+                }`}
+              >
+                Expenses (Out)
+              </button>
             </div>
 
             {/* Simple Search Input */}
@@ -626,10 +725,15 @@ export default function DashboardView({
                           <ArrowUpRight className="w-3 h-3 text-green-700 font-bold" />
                           Sale Rec
                         </span>
-                      ) : (
+                      ) : tx.type === "purchase" ? (
                         <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider select-none">
                           <ArrowDownLeft className="w-3 h-3 text-amber-800 font-bold" />
                           Purchase
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-900 border border-rose-200/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider select-none">
+                          <Banknote className="w-3 h-3 text-rose-800 font-bold" />
+                          Expense
                         </span>
                       )}
                     </td>
@@ -644,41 +748,49 @@ export default function DashboardView({
                     {!isReadOnly && (
                       <td className="py-3.5 px-4">
                         <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditingTx({
-                                id: tx.id,
-                                type: tx.type,
-                                date: tx.date,
-                                personName: tx.personName,
-                                quantity: tx.quantity,
-                                price: tx.price,
-                                plantName: tx.plantName,
-                                plantSize: tx.plantSize,
-                              })
-                            }
-                            className="p-1 px-2.5 rounded-lg hover:bg-editorial-primary/10 text-editorial-primary transition cursor-pointer flex items-center gap-1 font-bold text-[9px] uppercase tracking-wider bg-editorial-bg border border-editorial-primary/5 hover:border-editorial-primary/15"
-                            title="Edit this entry"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setDeletingTx({
-                                id: tx.id,
-                                type: tx.type,
-                                description: `"${tx.plantName} (${tx.plantSize})" recorded on ${tx.date} for ₹${tx.total}`,
-                              })
-                            }
-                            className="p-1 px-2.5 rounded-lg hover:bg-red-50 text-red-700 transition cursor-pointer flex items-center gap-1 font-bold text-[9px] uppercase tracking-wider bg-red-50/10 border border-red-200/20"
-                            title="Delete entry"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            Cancel
-                          </button>
+                          {tx.type !== "expense" ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditingTx({
+                                    id: tx.id,
+                                    type: tx.type,
+                                    date: tx.date,
+                                    personName: tx.personName,
+                                    quantity: tx.quantity,
+                                    price: tx.price,
+                                    plantName: tx.plantName,
+                                    plantSize: tx.plantSize,
+                                  })
+                                }
+                                className="p-1 px-2.5 rounded-lg hover:bg-editorial-primary/10 text-editorial-primary transition cursor-pointer flex items-center gap-1 font-bold text-[9px] uppercase tracking-wider bg-editorial-bg border border-editorial-primary/5 hover:border-editorial-primary/15"
+                                title="Edit this entry"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setDeletingTx({
+                                    id: tx.id,
+                                    type: tx.type,
+                                    description: `"${tx.plantName} (${tx.plantSize})" recorded on ${tx.date} for ₹${tx.total}`,
+                                  })
+                                }
+                                className="p-1 px-2.5 rounded-lg hover:bg-red-50 text-red-700 transition cursor-pointer flex items-center gap-1 font-bold text-[9px] uppercase tracking-wider bg-red-50/10 border border-red-200/20"
+                                title="Delete entry"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-[10px] text-stone-400 font-sans uppercase tracking-[0.1em] italic font-bold">
+                              Go to Expenses Tab
+                            </span>
+                          )}
                         </div>
                       </td>
                     )}

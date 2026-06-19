@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { InventoryItem, PurchaseRecord, SalesRecord, NurseryUser } from "./types";
+import { InventoryItem, PurchaseRecord, SalesRecord, NurseryUser, ExpenseRecord, ExpenseCategory } from "./types";
 import { INITIAL_INVENTORY, INITIAL_PURCHASES, INITIAL_SALES } from "./sampleData";
 import { motion, AnimatePresence } from "motion/react";
 import { fetchCollection, saveItem, removeItem, clearCollection } from "./lib/firebase";
@@ -9,10 +9,11 @@ import DashboardView from "./components/DashboardView";
 import InventoryView from "./components/InventoryView";
 import PurchaseView from "./components/PurchaseView";
 import SalesView from "./components/SalesView";
+import ExpensesView from "./components/ExpensesView";
 import SignInView from "./components/SignInView";
 
 // Icons
-import { Sprout, LayoutDashboard, Trees, ShoppingCart, ShoppingBag, Leaf, HelpCircle, HardDrive, LogOut, User, AlertTriangle } from "lucide-react";
+import { Sprout, LayoutDashboard, Trees, ShoppingCart, ShoppingBag, Leaf, HelpCircle, HardDrive, LogOut, User, AlertTriangle, Landmark } from "lucide-react";
 
 export default function App() {
   // Animation splash intro state
@@ -29,9 +30,11 @@ export default function App() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
   const [sales, setSales] = useState<SalesRecord[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
+  const [categories, setCategories] = useState<ExpenseCategory[]>([]);
 
   // Navigation tab tracker
-  const [activeTab, setActiveTab ] = useState<"dashboard" | "inventory" | "purchase" | "sales">("dashboard");
+  const [activeTab, setActiveTab ] = useState<"dashboard" | "inventory" | "purchase" | "sales" | "expenses">("dashboard");
 
   const isReadOnly = currentUser
     ? !(
@@ -103,13 +106,32 @@ export default function App() {
       localStorage.setItem("devakusuma_sales", JSON.stringify(INITIAL_SALES));
     }
 
+    // 3.5 Expenses and categories loading
+    const localExp = localStorage.getItem("devakusuma_expenses");
+    if (localExp) {
+      setExpenses(JSON.parse(localExp));
+    } else {
+      setExpenses([]);
+      localStorage.setItem("devakusuma_expenses", JSON.stringify([]));
+    }
+
+    const localCat = localStorage.getItem("devakusuma_categories");
+    if (localCat) {
+      setCategories(JSON.parse(localCat));
+    } else {
+      setCategories([]);
+      localStorage.setItem("devakusuma_categories", JSON.stringify([]));
+    }
+
     // 4. Async Firestore Sync
     const syncFromFirestore = async () => {
       try {
-        const [dbInventory, dbPurchases, dbSales] = await Promise.all([
+        const [dbInventory, dbPurchases, dbSales, dbExpenses, dbCategories] = await Promise.all([
           fetchCollection<InventoryItem>("inventory"),
           fetchCollection<PurchaseRecord>("purchases"),
           fetchCollection<SalesRecord>("sales"),
+          fetchCollection<ExpenseRecord>("expenses"),
+          fetchCollection<ExpenseCategory>("expenseCategories"),
         ]);
 
         if (dbInventory && dbInventory.length > 0) {
@@ -150,6 +172,32 @@ export default function App() {
             const parsed = JSON.parse(localSalData) as SalesRecord[];
             for (const record of parsed) {
               saveItem("sales", record.id, record).catch(console.error);
+            }
+          }
+        }
+
+        if (dbExpenses && dbExpenses.length > 0) {
+          setExpenses(dbExpenses);
+          localStorage.setItem("devakusuma_expenses", JSON.stringify(dbExpenses));
+        } else {
+          const localExpData = localStorage.getItem("devakusuma_expenses");
+          if (localExpData) {
+            const parsed = JSON.parse(localExpData) as ExpenseRecord[];
+            for (const record of parsed) {
+              saveItem("expenses", record.id, record).catch(console.error);
+            }
+          }
+        }
+
+        if (dbCategories && dbCategories.length > 0) {
+          setCategories(dbCategories);
+          localStorage.setItem("devakusuma_categories", JSON.stringify(dbCategories));
+        } else {
+          const localCatData = localStorage.getItem("devakusuma_categories");
+          if (localCatData) {
+            const parsed = JSON.parse(localCatData) as ExpenseCategory[];
+            for (const record of parsed) {
+              saveItem("expenseCategories", record.id, record).catch(console.error);
             }
           }
         }
@@ -498,6 +546,49 @@ export default function App() {
     }
   };
 
+  // Expense Handler: Add new Expense
+  const handleAddExpense = (newExpData: Omit<ExpenseRecord, "id" | "createdAt" | "updatedAt">) => {
+    const newExpense: ExpenseRecord = {
+      id: `exp-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      ...newExpData,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    
+    const updatedExpenses = [...expenses, newExpense];
+    setExpenses(updatedExpenses);
+    localStorage.setItem("devakusuma_expenses", JSON.stringify(updatedExpenses));
+    saveItem("expenses", newExpense.id, newExpense).catch(console.error);
+  };
+
+  // Expense Handler: Update Expense
+  const handleUpdateExpense = (updatedExpense: ExpenseRecord) => {
+    const updatedExpenses = expenses.map((e) => (e.id === updatedExpense.id ? updatedExpense : e));
+    setExpenses(updatedExpenses);
+    localStorage.setItem("devakusuma_expenses", JSON.stringify(updatedExpenses));
+    saveItem("expenses", updatedExpense.id, updatedExpense).catch(console.error);
+  };
+
+  // Expense Handler: Delete Expense
+  const handleDeleteExpense = (id: string) => {
+    const updatedExpenses = expenses.filter((e) => e.id !== id);
+    setExpenses(updatedExpenses);
+    localStorage.setItem("devakusuma_expenses", JSON.stringify(updatedExpenses));
+    removeItem("expenses", id).catch(console.error);
+  };
+
+  // Expense Handler: Add Custom Category
+  const handleAddCategory = (categoryName: string) => {
+    const newCategory: ExpenseCategory = {
+      id: `cat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      name: categoryName,
+    };
+    const updatedCategories = [...categories, newCategory];
+    setCategories(updatedCategories);
+    localStorage.setItem("devakusuma_categories", JSON.stringify(updatedCategories));
+    saveItem("expenseCategories", newCategory.id, newCategory).catch(console.error);
+  };
+
   // Wipe statistics reset (for easy demo testing)
   const handleResetData = () => {
     setShowResetModal(true);
@@ -507,79 +598,116 @@ export default function App() {
     const invIds = inventory.map((i) => i.id);
     const purIds = purchases.map((i) => i.id);
     const salIds = sales.map((i) => i.id);
+    const expIds = expenses.map((i) => i.id);
+    const catIds = categories.map((i) => i.id);
 
     clearCollection("inventory", invIds).catch((err) => console.error("Error clearing inventory:", err));
     clearCollection("purchases", purIds).catch((err) => console.error("Error clearing purchases:", err));
     clearCollection("sales", salIds).catch((err) => console.error("Error clearing sales:", err));
+    clearCollection("expenses", expIds).catch((err) => console.error("Error clearing expenses:", err));
+    clearCollection("expenseCategories", catIds).catch((err) => console.error("Error clearing categories:", err));
 
     localStorage.removeItem("devakusuma_inventory");
     localStorage.removeItem("devakusuma_purchases");
     localStorage.removeItem("devakusuma_sales");
+    localStorage.removeItem("devakusuma_expenses");
+    localStorage.removeItem("devakusuma_categories");
     setInventory(INITIAL_INVENTORY);
     setPurchases(INITIAL_PURCHASES);
     setSales(INITIAL_SALES);
+    setExpenses([]);
+    setCategories([]);
     setShowResetModal(false);
   };
 
   if (showSplash) {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#1D211C] text-[#FAFAF8] overflow-hidden select-none font-sans">
-        {/* Subtle slow spinning ambient glow behind the logo */}
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#0C120E] text-[#FAFAF8] overflow-hidden select-none font-sans">
+        {/* Soft, luxury ambient glow in logo brand colors */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 0.22, scale: 1.25 }}
-          transition={{ duration: 2.2, ease: "easeOut" }}
-          className="absolute w-[450px] h-[450px] rounded-full bg-[#A3B18A] blur-[110px] pointer-events-none"
+          initial={{ opacity: 0, scale: 0.7 }}
+          animate={{ opacity: [0.12, 0.24, 0.15], scale: [1, 1.25, 1.1] }}
+          transition={{ 
+            duration: 5, 
+            repeat: Infinity, 
+            repeatType: "mirror", 
+            ease: "easeInOut" 
+          }}
+          className="absolute w-[450px] h-[450px] rounded-full bg-gradient-to-tr from-[#1B382B] to-[#D4AF37] filter blur-[120px] pointer-events-none"
         />
 
         <div className="relative z-10 flex flex-col items-center text-center max-w-sm px-6">
-          {/* Actual Elegant Devakusuma Logo with Premium Spring Animation */}
-          <div className="w-44 h-44 mb-6 flex items-center justify-center relative">
+          {/* Official Devakusuma Logo with Spring and Glide Entry */}
+          <div className="w-48 h-48 mb-8 flex items-center justify-center relative">
+            <motion.div
+              initial={{ opacity: 0, rotate: 0 }}
+              animate={{ opacity: 0.45, rotate: 360 }}
+              transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+              className="absolute -inset-3 border border-dashed border-[#D4AF37]/30 rounded-full pointer-events-none"
+            />
+            <motion.div
+              initial={{ opacity: 0, rotate: 360 }}
+              animate={{ opacity: 0.15, rotate: 0 }}
+              transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+              className="absolute -inset-5 border border-dotted border-[#A3B18A]/20 rounded-full pointer-events-none"
+            />
+            
             <motion.img
               src="/logo.svg"
               alt="Devakusuma Nursery Gardens Logo"
-              initial={{ opacity: 0, scale: 0.8, rotate: -3 }}
-              animate={{ opacity: 1, scale: 1, rotate: 0 }}
+              referrerPolicy="no-referrer"
+              initial={{ opacity: 0, scale: 0.6, y: 20, rotate: -6 }}
+              animate={{ opacity: 1, scale: 1, y: 0, rotate: 0 }}
               transition={{
-                duration: 1.5,
-                ease: [0.34, 1.56, 0.64, 1],
+                type: "spring",
+                stiffness: 85,
+                damping: 14,
                 delay: 0.1
               }}
-              className="w-full h-full object-contain filter drop-shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
+              className="w-full h-full object-contain filter drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)]"
             />
           </div>
 
-          {/* Main Brand Title Stagger */}
+          {/* Title Header with Elegant Letter Spacing */}
           <motion.h2
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.7, ease: "easeOut" }}
-            className="font-serif italic text-3.5xl font-bold tracking-tight text-white"
+            initial={{ opacity: 0, letterSpacing: "0.05em", y: 15 }}
+            animate={{ opacity: 1, letterSpacing: "0.15em", y: 0 }}
+            transition={{ delay: 0.45, duration: 1.0, ease: [0.16, 1, 0.3, 1] }}
+            className="font-serif italic text-3.5xl font-extrabold tracking-wider text-white"
           >
             Devakusuma
           </motion.h2>
 
           <motion.p
             initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6, duration: 0.7, ease: "easeOut" }}
-            className="text-[10px] md:text-xs font-sans font-bold uppercase tracking-[0.25em] text-[#A3B18A]/90 mt-2"
+            animate={{ opacity: 0.9, y: 0 }}
+            transition={{ delay: 0.7, duration: 0.8, ease: "easeOut" }}
+            className="text-[10px] md:text-xs font-sans font-extrabold uppercase tracking-[0.25em] text-[#D4AF37] mt-3"
           >
-            Live Botanical & Invoice Ledger
+            Nursery Gardens
+          </motion.p>
+          
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.5 }}
+            transition={{ delay: 0.9, duration: 0.8 }}
+            className="text-[8px] font-mono uppercase tracking-[0.18em] text-[#A3B18A] mt-1.5"
+          >
+            Botanical Stock & Invoice Ledger
           </motion.p>
 
-          <div className="w-32 h-[1px] bg-white/15 my-6 relative overflow-hidden rounded-full">
-            {/* Dynamic load progression bar */}
+          {/* Gold highlight luxury progress bar */}
+          <div className="w-32 h-[1.5px] bg-white/10 my-6 relative overflow-hidden rounded-full">
             <motion.div
               initial={{ left: "-100%" }}
               animate={{ left: "100%" }}
-              transition={{ duration: 1.9, repeat: 0, ease: "easeInOut", delay: 0.4 }}
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-[#A3B18A] to-transparent"
+              transition={{ duration: 1.9, repeat: 0, ease: "easeInOut", delay: 0.3 }}
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-[#D4AF37] to-transparent"
             />
           </div>
 
           {/* Micro loading logs sequence */}
-          <div className="h-6 overflow-hidden relative">
+          <div className="h-6 overflow-hidden relative w-64">
             <motion.span
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: [0, 1, 1, 0], y: [15, 0, 0, -15] }}
@@ -610,9 +738,9 @@ export default function App() {
         {/* Absolute decorative bottom notes */}
         <motion.div
           initial={{ opacity: 0 }}
-          animate={{ opacity: 0.25 }}
+          animate={{ opacity: 0.35 }}
           transition={{ delay: 1.2, duration: 1 }}
-          className="absolute bottom-8 text-[8px] font-sans text-white/70 tracking-[0.3em] uppercase"
+          className="absolute bottom-8 text-[8px] font-sans text-white/40 tracking-[0.3em] uppercase"
         >
           Karnataka, India &bull; Est. 1977
         </motion.div>
@@ -699,6 +827,18 @@ export default function App() {
             >
               Sales
             </button>
+
+            <button
+              id="tab-expenses"
+              onClick={() => setActiveTab("expenses")}
+              className={`px-4 md:px-5 py-2 rounded-full text-xs font-sans uppercase tracking-widest font-bold transition-colors ${
+                activeTab === "expenses"
+                  ? "bg-editorial-primary text-white"
+                  : "text-editorial-text hover:bg-editorial-primary/10"
+              }`}
+            >
+              Expenses
+            </button>
           </div>
 
           <div className="h-6 w-[1px] bg-editorial-primary/20" />
@@ -759,6 +899,7 @@ export default function App() {
             inventory={inventory}
             purchases={purchases}
             sales={sales}
+            expenses={expenses}
             onDeleteSale={handleDeleteSale}
             onUpdateSale={handleUpdateSale}
             onDeletePurchase={handleDeletePurchase}
@@ -800,32 +941,44 @@ export default function App() {
             isReadOnly={isReadOnly}
           />
         )}
+
+        {activeTab === "expenses" && (
+          <ExpensesView
+            expenses={expenses}
+            categories={categories}
+            onAddExpense={handleAddExpense}
+            onUpdateExpense={handleUpdateExpense}
+            onDeleteExpense={handleDeleteExpense}
+            onAddCategory={handleAddCategory}
+            isReadOnly={isReadOnly}
+          />
+        )}
       </main>
 
       {/* Editorial Footer */}
-      <footer className="py-6 px-6 md:px-10 flex flex-col md:flex-row items-center justify-between text-[10px] uppercase tracking-[0.2em] font-sans text-editorial-primary/70 border-t border-editorial-primary/10 bg-white/20 mt-12 shrink-0 gap-4 mb-20 md:mb-0">
-        <div className="flex items-center gap-2">
-          <Leaf className="w-3.5 h-3.5 text-editorial-primary font-bold" />
-          <span>Devakusuma Nursery Gardens</span>
+      <footer className="py-8 px-6 md:px-10 flex flex-col md:flex-row items-center justify-between border-t border-editorial-primary/10 bg-white/20 mt-12 shrink-0 gap-4 mb-20 md:mb-0">
+        <div className="flex flex-col items-center md:items-start gap-1">
+          <div className="flex items-center gap-2 text-xs md:text-sm uppercase tracking-[0.2em] font-sans font-extrabold text-editorial-primary/95">
+            <Leaf className="w-4 h-4 text-editorial-primary font-bold fill-editorial-accent/15" />
+            <span>Devakusuma Nursery Gardens</span>
+          </div>
+          <div className="text-xs font-serif italic text-stone-500 mt-0.5 flex items-center justify-center md:justify-start gap-1.5">
+            <span>Operator:</span>
+            <span className="font-sans font-extrabold text-[#D4AF37] not-italic uppercase tracking-wider text-[11.5px]">{currentUser.username}</span>
+          </div>
         </div>
-        <div>
-          <span>Operator: {currentUser.username} ({currentUser.role})</span>
-        </div>
-        <div className="flex gap-6 items-center">
+        
+        <div className="flex items-center justify-center md:justify-end text-[10px] uppercase tracking-[0.15em] text-editorial-primary/75 font-sans">
           {!isReadOnly && (
-            <>
-              <button
-                id="reset-db-btn"
-                onClick={handleResetData}
-                className="font-bold text-red-700/80 hover:text-red-700 transition-colors uppercase tracking-[0.2em]"
-                title="Restores original stock catalog for demo review"
-              >
-                Reset Demo Seeds
-              </button>
-              <span>&bull;</span>
-            </>
+            <button
+              id="reset-db-btn"
+              onClick={handleResetData}
+              className="font-bold text-red-600 hover:text-red-800 hover:underline transition-all uppercase cursor-pointer"
+              title="Restores original stock catalog for demo review"
+            >
+              Reset Demo Seeds
+            </button>
           )}
-          <span>System Online</span>
         </div>
       </footer>
 
@@ -884,6 +1037,19 @@ export default function App() {
         >
           <ShoppingBag className="w-5 h-5 mb-0.5" />
           <span className="text-[10px] font-sans uppercase tracking-wider font-semibold">Sales</span>
+        </button>
+
+        <button
+          id="mobile-tab-expenses"
+          onClick={() => setActiveTab("expenses")}
+          className={`flex flex-col items-center justify-center flex-1 py-1 text-center transition-colors cursor-pointer ${
+            activeTab === "expenses"
+              ? "text-editorial-primary font-bold"
+              : "text-editorial-text/50 font-medium"
+          }`}
+        >
+          <Landmark className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px] font-sans uppercase tracking-wider font-semibold">Expenses</span>
         </button>
       </div>
 

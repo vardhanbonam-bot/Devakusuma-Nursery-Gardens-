@@ -20,6 +20,8 @@ export default function SignInView({ onSignInSuccess }: SignInViewProps) {
   const [selectedUser, setSelectedUser] = useState<NurseryUser | null>(null);
   const [pinInput, setPinInput] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loggedInUser, setLoggedInUser] = useState<NurseryUser | null>(null);
 
   // Create user form state
   const [showAddForm, setShowAddForm] = useState(false);
@@ -121,6 +123,8 @@ export default function SignInView({ onSignInSuccess }: SignInViewProps) {
     setSelectedUser(null);
     setPinInput("");
     setErrorMessage("");
+    setIsLoggingIn(false);
+    setLoggedInUser(null);
   };
 
   const handlePinKeyPress = (num: string) => {
@@ -166,7 +170,11 @@ export default function SignInView({ onSignInSuccess }: SignInViewProps) {
     if (!selectedUser) return;
     
     if (pinInput === selectedUser.pin) {
-      onSignInSuccess(selectedUser);
+      setIsLoggingIn(true);
+      setLoggedInUser(selectedUser);
+      setTimeout(() => {
+        onSignInSuccess(selectedUser);
+      }, 1900);
     } else {
       setErrorMessage("Incorrect PIN. Please try again.");
       setPinInput("");
@@ -247,7 +255,70 @@ export default function SignInView({ onSignInSuccess }: SignInViewProps) {
       {/* Main Container Section */}
       <main className="flex-1 max-w-4xl w-full mx-auto flex items-center justify-center my-8">
         <AnimatePresence mode="wait">
-          {!selectedUser ? (
+          {isLoggingIn && loggedInUser ? (
+            <motion.div
+              key="welcome-loader"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              className="w-full max-w-md bg-white border border-editorial-primary/10 rounded-3xl p-10 md:p-12 shadow-[0_12px_45px_rgba(0,0,0,0.04)] text-center flex flex-col items-center justify-center relative overflow-hidden"
+            >
+              <div className="absolute -right-16 -top-16 w-36 h-36 rounded-full bg-emerald-500/5 filter blur-xl pointer-events-none" />
+              <div className="absolute -left-16 -bottom-16 w-36 h-36 rounded-full bg-[#D4AF37]/5 filter blur-xl pointer-events-none" />
+              
+              <div className="w-24 h-24 mb-6 relative flex items-center justify-center">
+                <motion.div
+                  initial={{ rotate: 0 }}
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                  className="absolute inset-0 border-2 border-dashed border-[#D4AF37]/35 rounded-full"
+                />
+                <motion.div
+                  initial={{ scale: 0.8 }}
+                  animate={{ scale: [1, 1.06, 1] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                  className="w-18 h-18 rounded-full flex items-center justify-center text-white font-sans text-xl font-bold font-semibold shadow-md shrink-0"
+                  style={{ backgroundColor: loggedInUser.avatarColor }}
+                >
+                  {loggedInUser.username.slice(0, 2).toUpperCase()}
+                </motion.div>
+              </div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="space-y-3"
+              >
+                <div className="text-[10px] font-sans font-bold uppercase tracking-[0.25em] text-[#D4AF37]">
+                  Access Granted &bull; Secure Session
+                </div>
+                
+                <h2 className="text-2xl md:text-3xl font-serif italic font-bold text-editorial-dark">
+                  Welcome, {loggedInUser.username}
+                </h2>
+                
+                <p className="text-[11px] font-sans text-editorial-primary/70 uppercase tracking-widest font-semibold">
+                  Authorized Role: {loggedInUser.role}
+                </p>
+                
+                <div className="pt-6 flex flex-col items-center">
+                  <div className="w-24 h-[1px] bg-stone-150 relative overflow-hidden rounded-full">
+                    <motion.div
+                      initial={{ left: "-100%" }}
+                      animate={{ left: "100%" }}
+                      transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                      className="absolute inset-0 bg-[#A3B18A]"
+                    />
+                  </div>
+                  <span className="text-[9px] font-mono uppercase tracking-wider text-stone-400 mt-2.5 animate-pulse">
+                    Synchronizing ledger databases...
+                  </span>
+                </div>
+              </motion.div>
+            </motion.div>
+          ) : !selectedUser ? (
             <motion.div
               key="profile-selection"
               initial={{ opacity: 0, y: 15 }}
@@ -426,15 +497,15 @@ export default function SignInView({ onSignInSuccess }: SignInViewProps) {
                         </p>
                       </div>
 
-                      {/* Delete icon for custom added cards Only (don't force Annapoorna to be locked, but keep lists reliable) */}
+                      {/* Delete icon - always visible, elegant high-contrast badge so it is never masked or missed */}
                       {users.length > 1 && (
                         <button
                           type="button"
                           onClick={(e) => handleDeleteProfileClick(u, e)}
                           title="Delete Profile Stamp"
-                          className="absolute right-3.5 bottom-3.5 opacity-0 group-hover:opacity-100 p-1.5 rounded bg-red-100/50 hover:bg-red-150 text-red-700 transition cursor-pointer"
+                          className="absolute right-3 top-3 p-1.5 rounded-full border border-red-200 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white shadow-[0_2px_8px_rgba(239,68,68,0.12)] hover:shadow-[0_4px_12px_rgba(239,68,68,0.25)] transition-all duration-300 cursor-pointer z-20"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       )}
                     </motion.div>

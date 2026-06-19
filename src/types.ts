@@ -41,3 +41,20 @@ export interface NurseryUser {
   pin: string; // 4-8 character PIN / password
   avatarColor: string; // e.g., #5A5A40 for brand-aligned options
 }
+
+export interface ExpenseRecord {
+  id: string;
+  date: string; // YYYY-MM-DD
+  category: string;
+  description: string;
+  amount: number;
+  paymentMode: string; // Cash / UPI / Bank transfer / Other
+  paidTo: string;
+  createdAt: string; // ISO string
+  updatedAt: string; // ISO string
+}
+
+export interface ExpenseCategory {
+  id: string;
+  name: string;
+}

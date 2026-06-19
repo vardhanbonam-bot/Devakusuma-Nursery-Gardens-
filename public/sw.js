@@ -1,5 +1,5 @@
 // Devakusuma Farm OS - Progressive Web App Service Worker
-const CACHE_NAME = "devakusuma-cache-v2";
+const CACHE_NAME = "devakusuma-cache-v4";
 const ASSETS_TO_CACHE = [
   "/",
   "/index.html",
@@ -32,7 +32,7 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Cache first, fall back to network strategy for UI shell, network only for firestore & API
+// Network first, fall back to cache strategy for reliable updates during active development
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   
@@ -41,13 +41,10 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   
+  // Try network first, then fall back to cache
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).then((networkResponse) => {
-        // Cache newly requested local sub-resources dynamically
+    fetch(event.request)
+      .then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200 && event.request.method === "GET") {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -55,12 +52,16 @@ self.addEventListener("fetch", (event) => {
           });
         }
         return networkResponse;
-      }).catch(() => {
-        // Fallback for offline usage
-        if (event.request.mode === "navigate") {
-          return caches.match("/index.html");
-        }
-      });
-    })
+      })
+      .catch(() => {
+        return caches.match(event.request).then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          if (event.request.mode === "navigate") {
+            return caches.match("/index.html");
+          }
+        });
+      })
   );
 });

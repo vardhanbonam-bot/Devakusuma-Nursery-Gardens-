@@ -58,6 +58,33 @@
         "avatarColor": { "type": "string", "description": "Hex code of avatar styling color" }
       },
       "required": ["id", "username", "role", "pin", "avatarColor"]
+    },
+    "ExpenseRecord": {
+      "title": "ExpenseRecord",
+      "description": "Represents a single business expense entry in the ledger.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique expense identifier" },
+        "date": { "type": "string", "format": "date", "description": "Date of the expense in YYYY-MM-DD" },
+        "category": { "type": "string", "description": "The expense line item category classification" },
+        "description": { "type": "string", "description": "The optional free-text description of the expense" },
+        "amount": { "type": "number", "description": "The amount spent in Rupees" },
+        "paymentMode": { "type": "string", "description": "Payment mode: Cash, UPI, Bank transfer, Other" },
+        "paidTo": { "type": "string", "description": "The payment recipient name" },
+        "createdAt": { "type": "string", "description": "Creation timestamp ISO" },
+        "updatedAt": { "type": "string", "description": "Last update timestamp ISO" }
+      },
+      "required": ["id", "date", "category", "amount", "paymentMode"]
+    },
+    "ExpenseCategory": {
+      "title": "ExpenseCategory",
+      "description": "Represents a persistable custom or default expense category classification.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique category identifier" },
+        "name": { "type": "string", "description": "Category list display name" }
+      },
+      "required": ["id", "name"]
     }
   },
   "firestore": {
@@ -76,6 +103,14 @@
     "/users/{userId}": {
       "schema": "#/entities/NurseryUser",
       "description": "Registered operators with authorization rules."
+    },
+    "/expenses/{expenseId}": {
+      "schema": "#/entities/ExpenseRecord",
+      "description": "All registered business expense records."
+    },
+    "/expenseCategories/{categoryId}": {
+      "schema": "#/entities/ExpenseCategory",
+      "description": "Custom registered categories list."
     }
   }
 }
