@@ -97,8 +97,6 @@ export default function PurchaseView({ inventory, purchases, onAddPurchase, isRe
     setSupplierName("");
     setPlantName("");
     setPlantSize("1 ft");
-    setCustomSizeText("");
-    setIsCustomSize(false);
     setQuantityPurchased("");
     setCostPerUnit("");
     setExpectedSellingPrice("");

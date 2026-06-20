@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useRef } from "react";
-import { ExpenseRecord, ExpenseCategory } from "../types";
+import React, { useState, useMemo, useRef, useEffect } from "react";
+import { ExpenseRecord, ExpenseCategory, ExpenseSubcategory } from "../types";
 import * as XLSX from "xlsx";
 import { 
   Plus, 
@@ -29,29 +29,82 @@ import {
 interface ExpensesViewProps {
   expenses: ExpenseRecord[];
   categories: ExpenseCategory[];
+  subcategories: ExpenseSubcategory[];
   onAddExpense: (expense: Omit<ExpenseRecord, "id" | "createdAt" | "updatedAt">) => void;
   onUpdateExpense: (expense: ExpenseRecord) => void;
   onDeleteExpense: (id: string) => void;
   onAddCategory: (categoryName: string) => void;
+  onAddSubcategory: (categoryName: string, name: string) => void;
+  onDeleteSubcategory: (id: string) => void;
   isReadOnly?: boolean;
 }
 
 export default function ExpensesView({
   expenses,
   categories,
+  subcategories = [],
   onAddExpense,
   onUpdateExpense,
   onDeleteExpense,
   onAddCategory,
+  onAddSubcategory,
+  onDeleteSubcategory,
   isReadOnly = false,
 }: ExpensesViewProps) {
   // Local form states
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [category, setCategory] = useState("Soil & growing medium");
+  const [subcategory, setSubcategory] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [paymentMode, setPaymentMode] = useState("Cash");
   const [paidTo, setPaidTo] = useState("");
+
+  // Subcategory management local states
+  const [newSubcategoryName, setNewSubcategoryName] = useState("");
+  const [manageSubcatCategory, setManageSubcatCategory] = useState("Home");
+  const [showSubcategoryManager, setShowSubcategoryManager] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  // Filter subcategories matching selected Category
+  const filteredSubcategories = useMemo(() => {
+    return subcategories.filter(sub => sub.categoryName.toLowerCase() === category.toLowerCase());
+  }, [subcategories, category]);
+
+  // Sync subcategory on category change
+  useEffect(() => {
+    if (filteredSubcategories.length > 0) {
+      setSubcategory(filteredSubcategories[0].name);
+    } else {
+      setSubcategory("");
+    }
+  }, [category, subcategories]);
+
+  // Manage subcategory insertion handler
+  const handleAddSub = () => {
+    const trimmed = newSubcategoryName.trim();
+    if (!trimmed) return;
+    const isDuplicate = subcategories.some(
+      s => s.categoryName.toLowerCase() === manageSubcatCategory.toLowerCase() &&
+           s.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (isDuplicate) {
+      alert("This subcategory already exists under this category.");
+      return;
+    }
+    onAddSubcategory(manageSubcatCategory, trimmed);
+    setNewSubcategoryName("");
+  };
+
+  const toggleCategoryExpand = (catName: string) => {
+    const next = new Set(expandedCategories);
+    if (next.has(catName)) {
+      next.delete(catName);
+    } else {
+      next.add(catName);
+    }
+    setExpandedCategories(next);
+  };
 
   // Custom Category prompt state
   const [showCustomCategoryInput, setShowCustomCategoryInput] = useState(false);
@@ -89,6 +142,7 @@ export default function ExpensesView({
 
   // Default hardcoded categories for backup, combined with Firestore-saved custom categories
   const defaultCategories = useMemo(() => [
+    "Home",
     "Soil & growing medium",
     "Labour wages",
     "Electricity",
@@ -140,6 +194,7 @@ export default function ExpensesView({
     onAddExpense({
       date,
       category,
+      subcategory: filteredSubcategories.length > 0 ? subcategory : undefined,
       description: description.trim(),
       amount: parsedAmount,
       paymentMode,
@@ -150,6 +205,7 @@ export default function ExpensesView({
     setDescription("");
     setAmount("");
     setPaidTo("");
+    setSubcategory("");
     alert("Expense added successfully!");
   };
 
@@ -691,6 +747,48 @@ export default function ExpensesView({
       .sort((a, b) => b.value - a.value);
   }, [filteredExpenses]);
 
+  // Compute subcategories matching the editing expense category
+  const editingCategorySubcategories = useMemo(() => {
+    if (!editingExpense) return [];
+    return subcategories.filter(sub => sub.categoryName.toLowerCase() === editingExpense.category.toLowerCase());
+  }, [editingExpense, subcategories]);
+
+  // Group and calculate detailed subcategory breakdowns for expanded category view
+  const subcategoryBreakdowns = useMemo(() => {
+    const breakdowns: { [category: string]: { name: string; value: number; percentage: number }[] } = {};
+    
+    // Group filteredExpenses of each category by subcategory
+    filteredExpenses.forEach(item => {
+      const cat = item.category;
+      const sub = item.subcategory || "Other/General";
+      const amt = Number(item.amount || 0);
+      
+      if (!breakdowns[cat]) {
+        breakdowns[cat] = [];
+      }
+      
+      const existing = breakdowns[cat].find(b => b.name === sub);
+      if (existing) {
+        existing.value += amt;
+      } else {
+        breakdowns[cat].push({ name: sub, value: amt, percentage: 0 });
+      }
+    });
+
+    // Calculate percentage for each subcategory relative to the parent category total
+    Object.keys(breakdowns).forEach(cat => {
+      const catTotal = breakdowns[cat].reduce((sum, b) => sum + b.value, 0);
+      breakdowns[cat] = breakdowns[cat]
+        .map(b => ({
+          ...b,
+          percentage: catTotal > 0 ? (b.value / catTotal) * 100 : 0
+        }))
+        .sort((a, b) => b.value - a.value);
+    });
+
+    return breakdowns;
+  }, [filteredExpenses]);
+
   // Total filtered expense summary
   const totalFilteredSum = useMemo(() => {
     return filteredExpenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -863,6 +961,100 @@ export default function ExpensesView({
                     </form>
                   ) : null}
 
+                  {showSubcategoryManager && !showCustomCategoryInput ? (
+                    <div className="bg-stone-50 p-5 border border-editorial-primary/15 rounded-xl space-y-4 animate-fade-in text-editorial-dark mb-4">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-1.5 text-xs text-editorial-dark font-bold font-sans uppercase tracking-wider">
+                          <Layers className="w-4 h-4 text-editorial-primary" />
+                          <span>Manage Subcategories</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowSubcategoryManager(false)}
+                          className="text-stone-400 hover:text-stone-600 transition"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      
+                      <p className="text-xs text-stone-500 font-serif italic">
+                        Select a category and add/remove subcategories below. These will propagate to the ledger form and analysis breakdowns.
+                      </p>
+
+                      <div className="space-y-3">
+                        {/* Parent Category selector within manager */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/70">Parent Category</label>
+                          <select
+                            value={manageSubcatCategory}
+                            onChange={(e) => setManageSubcatCategory(e.target.value)}
+                            className="w-full text-xs font-mono bg-white border border-editorial-primary/10 rounded-lg p-2.5 text-editorial-dark focus:outline-none"
+                          >
+                            {allCategoriesList.map((catName) => (
+                              <option key={catName} value={catName}>
+                                {catName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* List of current subcategories */}
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/70">
+                            Subcategories of "{manageSubcatCategory}"
+                          </label>
+                          
+                          {subcategories.filter(s => s.categoryName === manageSubcatCategory).length === 0 ? (
+                            <p className="text-xs text-stone-400 italic">No subcategories defined yet.</p>
+                          ) : (
+                            <div className="max-h-36 overflow-y-auto space-y-1 pr-1 border border-stone-200/60 rounded-lg p-2 bg-white/70">
+                              {subcategories
+                                .filter(s => s.categoryName === manageSubcatCategory)
+                                .map((sub) => (
+                                  <div key={sub.id} className="flex justify-between items-center bg-stone-100/50 hover:bg-stone-100 rounded-md py-1 px-2.5 text-xs font-mono">
+                                    <span>{sub.name}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => onDeleteSubcategory(sub.id)}
+                                      className="text-red-500 hover:text-red-700 p-1 rounded-full transition cursor-pointer"
+                                      title="Delete subcategory"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Add subcategory input */}
+                        <div className="pt-2 border-t border-stone-200 flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="Add subcategory name..."
+                            value={newSubcategoryName}
+                            onChange={(e) => setNewSubcategoryName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAddSub();
+                              }
+                            }}
+                            className="flex-1 text-xs font-mono bg-white border border-editorial-primary/15 rounded-lg p-2.5 text-editorial-dark focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddSub}
+                            className="px-3 py-2 bg-editorial-primary hover:bg-editorial-dark text-white rounded-lg font-bold transition flex items-center gap-1 text-xs cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {!showCustomCategoryInput && (
                     <form onSubmit={handleSubmitExpense} className="space-y-5" id="add-expense-form">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -886,14 +1078,31 @@ export default function ExpensesView({
                         <div className="space-y-1.5">
                           <div className="flex justify-between items-center">
                             <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Expense Category *</label>
-                            <button
-                              type="button"
-                              onClick={() => setShowCustomCategoryInput(true)}
-                              className="text-[10px] font-sans font-extrabold text-editorial-primary hover:underline hover:text-editorial-dark flex items-center gap-0.5 cursor-pointer"
-                            >
-                              <PlusCircle className="w-3 h-3" />
-                              <span>Custom Category</span>
-                            </button>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setManageSubcatCategory(category);
+                                  setShowSubcategoryManager(!showSubcategoryManager);
+                                  setShowCustomCategoryInput(false);
+                                }}
+                                className="text-[10px] font-sans font-extrabold text-stone-500 hover:underline hover:text-stone-700 flex items-center gap-0.5 cursor-pointer"
+                              >
+                                <Layers className="w-3 h-3" />
+                                <span>Manage Subs</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowCustomCategoryInput(true);
+                                  setShowSubcategoryManager(false);
+                                }}
+                                className="text-[10px] font-sans font-extrabold text-editorial-primary hover:underline hover:text-editorial-dark flex items-center gap-0.5 cursor-pointer"
+                              >
+                                <PlusCircle className="w-3 h-3" />
+                                <span>Custom Category</span>
+                              </button>
+                            </div>
                           </div>
                           <select
                             value={category}
@@ -909,6 +1118,23 @@ export default function ExpensesView({
                         </div>
 
                       </div>
+
+                      {filteredSubcategories.length > 0 && (
+                        <div className="space-y-1.5 animate-fade-in bg-stone-50/40 p-3.5 border border-stone-200/50 rounded-xl">
+                          <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Subcategory selection *</label>
+                          <select
+                            value={subcategory}
+                            onChange={(e) => setSubcategory(e.target.value)}
+                            className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
+                          >
+                            {filteredSubcategories.map((sub) => (
+                              <option key={sub.id} value={sub.name}>
+                                {sub.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         
@@ -1296,18 +1522,27 @@ export default function ExpensesView({
                 </div>
               ) : (
                 categoryChartData.slice(0, 7).map((cat, idx) => (
-                  <div key={idx} className="space-y-1.5 text-editorial-dark">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-sans font-bold text-[11px] text-stone-700 truncate max-w-[170px] flex items-center gap-1.5">
-                        <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: `hsl(140, 15%, ${40 + (idx * 6)}%)` }} />
-                        {cat.name}
-                      </span>
-                      <span className="font-mono text-stone-500 text-[10px]">
-                        <strong>{formatRupees(cat.value)}</strong> ({cat.percentage.toFixed(0)}%)
-                      </span>
-                    </div>
+                  <div key={idx} className="space-y-1.5 text-editorial-dark border-b border-stone-100/40 pb-2 last:border-0 last:pb-0">
+                    <button
+                      type="button"
+                      onClick={() => toggleCategoryExpand(cat.name)}
+                      className="w-full text-left focus:outline-none"
+                    >
+                      <div className="flex justify-between items-center text-xs hover:opacity-80 transition-opacity">
+                        <span className="font-sans font-bold text-[11px] text-stone-700 truncate max-w-[170px] flex items-center gap-1 cursor-pointer">
+                          <span className="inline-block text-[8px] font-mono text-stone-400 font-extrabold w-3 text-center">
+                            {expandedCategories.has(cat.name) ? "▼" : "▶"}
+                          </span>
+                          <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: `hsl(140, 15%, ${40 + (idx * 6)}%)` }} />
+                          {cat.name}
+                        </span>
+                        <span className="font-mono text-stone-500 text-[10px] cursor-pointer">
+                          <strong>{formatRupees(cat.value)}</strong> ({cat.percentage.toFixed(0)}%)
+                        </span>
+                      </div>
+                    </button>
                     {/* Visual flat bar container */}
-                    <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden">
+                    <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden cursor-pointer" onClick={() => toggleCategoryExpand(cat.name)}>
                       <div 
                         className="h-full rounded-full transition-all duration-500" 
                         style={{ 
@@ -1316,6 +1551,33 @@ export default function ExpensesView({
                         }}
                       />
                     </div>
+
+                    {/* Expandable subcategory breakdown list */}
+                    {expandedCategories.has(cat.name) && (
+                      <div className="pl-4 pr-1 py-1.5 mt-1 border-l-2 border-stone-200 bg-stone-50/50 rounded-r-lg space-y-2 text-[10px] animate-fade-in">
+                        <span className="block font-sans text-[8px] uppercase tracking-wider text-stone-400">Subcategory Breakdown</span>
+                        {(!subcategoryBreakdowns[cat.name] || subcategoryBreakdowns[cat.name].length === 0) ? (
+                          <span className="text-stone-400 italic block">No subcategory records found for this category.</span>
+                        ) : (
+                          subcategoryBreakdowns[cat.name].map((subBreakdown, subIdx) => (
+                            <div key={subIdx} className="space-y-1">
+                              <div className="flex justify-between items-center font-mono">
+                                <span className="text-stone-600 font-bold max-w-[140px] truncate">{subBreakdown.name}</span>
+                                <span className="text-stone-500 font-medium">
+                                  {formatRupees(subBreakdown.value)} ({subBreakdown.percentage.toFixed(0)}%)
+                                </span>
+                              </div>
+                              <div className="h-1 w-full bg-stone-200/60 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-editorial-primary/70 rounded-full transition-all duration-500"
+                                  style={{ width: `${subBreakdown.percentage}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -1479,9 +1741,16 @@ export default function ExpensesView({
 
                     {/* Category */}
                     <td className="py-4 px-6 shrink-0 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-sans font-bold uppercase tracking-wider bg-editorial-accent/10 text-editorial-primary border border-editorial-accent/15">
-                        {exp.category}
-                      </span>
+                      <div className="flex flex-col gap-1 items-start">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-sans font-bold uppercase tracking-wider bg-editorial-accent/10 text-editorial-primary border border-editorial-accent/15">
+                          {exp.category}
+                        </span>
+                        {exp.subcategory && (
+                          <span className="inline-flex items-center text-[8px] font-sans font-bold text-stone-500 bg-stone-100 px-1 py-0.5 rounded uppercase border border-stone-200">
+                            {exp.subcategory}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Details Description */}
@@ -1593,8 +1862,16 @@ export default function ExpensesView({
                   <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Category *</label>
                   <select
                     value={editingExpense.category}
-                    onChange={(e) => setEditingExpense({ ...editingExpense, category: e.target.value })}
-                    className="w-full text-xs font-mono bg-stone-50 border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:outline-none focus:bg-white"
+                    onChange={(e) => {
+                      const newCat = e.target.value;
+                      const subs = subcategories.filter(sub => sub.categoryName.toLowerCase() === newCat.toLowerCase());
+                      setEditingExpense({
+                        ...editingExpense,
+                        category: newCat,
+                        subcategory: subs.length > 0 ? subs[0].name : undefined
+                      });
+                    }}
+                    className="w-full text-xs font-mono bg-stone-50 border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:outline-none"
                   >
                     {allCategoriesList.map((name) => (
                       <option key={name} value={name}>{name}</option>
@@ -1666,6 +1943,22 @@ export default function ExpensesView({
                 </div>
 
               </div>
+
+              {editingCategorySubcategories.length > 0 && (
+                <div className="space-y-1 bg-stone-50 p-3.5 border border-stone-200/50 rounded-xl">
+                  <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Subcategory *</label>
+                  <select
+                    value={editingExpense.subcategory || ""}
+                    onChange={(e) => setEditingExpense({ ...editingExpense, subcategory: e.target.value })}
+                    className="w-full text-xs font-mono bg-white border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:outline-none"
+                  >
+                    {!editingExpense.subcategory && <option value="">-- Select Subcategory --</option>}
+                    {editingCategorySubcategories.map((sub) => (
+                      <option key={sub.id} value={sub.name}>{sub.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="mt-6 flex gap-3 pt-3 border-t border-stone-100">
                 <button

@@ -67,6 +67,7 @@
         "id": { "type": "string", "description": "Unique expense identifier" },
         "date": { "type": "string", "format": "date", "description": "Date of the expense in YYYY-MM-DD" },
         "category": { "type": "string", "description": "The expense line item category classification" },
+        "subcategory": { "type": "string", "description": "The optional secondary subcategory classification" },
         "description": { "type": "string", "description": "The optional free-text description of the expense" },
         "amount": { "type": "number", "description": "The amount spent in Rupees" },
         "paymentMode": { "type": "string", "description": "Payment mode: Cash, UPI, Bank transfer, Other" },
@@ -85,6 +86,17 @@
         "name": { "type": "string", "description": "Category list display name" }
       },
       "required": ["id", "name"]
+    },
+    "ExpenseSubcategory": {
+      "title": "ExpenseSubcategory",
+      "description": "Represents a subcategory belonging to a parent expense category.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique subcategory identifier" },
+        "categoryName": { "type": "string", "description": "The parent category name" },
+        "name": { "type": "string", "description": "The subcategory name" }
+      },
+      "required": ["id", "categoryName", "name"]
     }
   },
   "firestore": {
@@ -111,6 +123,10 @@
     "/expenseCategories/{categoryId}": {
       "schema": "#/entities/ExpenseCategory",
       "description": "Custom registered categories list."
+    },
+    "/expenseSubcategories/{subcategoryId}": {
+      "schema": "#/entities/ExpenseSubcategory",
+      "description": "Custom registered subcategories list keyed by parent category name."
     }
   }
 }

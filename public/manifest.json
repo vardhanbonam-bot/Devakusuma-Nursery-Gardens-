@@ -5,13 +5,13 @@
     {
       "src": "/icon.svg",
       "type": "image/svg+xml",
-      "sizes": "any",
+      "sizes": "192x192 512x512",
       "purpose": "any"
     },
     {
       "src": "/icon.svg",
       "type": "image/svg+xml",
-      "sizes": "any",
+      "sizes": "192x192 512x512",
       "purpose": "maskable"
     }
   ],

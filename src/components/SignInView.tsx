@@ -243,7 +243,7 @@ export default function SignInView({ onSignInSuccess }: SignInViewProps) {
       
       {/* Top Brand Header */}
       <header className="max-w-md w-full mx-auto text-center pt-8 md:pt-12">
-        <img src="/logo.svg" alt="Devakusuma Logo" className="w-20 h-20 mx-auto mb-4 object-contain" />
+        <img src="/logo.svg" alt="Devakusuma Logo" className="w-20 h-20 mx-auto mb-4 object-contain" referrerPolicy="no-referrer" />
         <h1 className="text-3xl md:text-4xl font-serif italic text-editorial-dark font-bold tracking-tight">
           Devakusuma Nursery
         </h1>

@@ -1,102 +1,74 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%" fill="none">
   <defs>
-    <!-- Organic golden accent gradient -->
-    <linearGradient id="gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#E5C185"/>
-      <stop offset="35%" stop-color="#D4AF37"/>
-      <stop offset="70%" stop-color="#AA7C11"/>
-      <stop offset="100%" stop-color="#F3E5AB"/>
+    <!-- Branding colors based on the app's green theme #4A5D4E -->
+    <linearGradient id="brand-green-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4A5D4E"/>
+      <stop offset="100%" stop-color="#2D3B30"/>
     </linearGradient>
-    
-    <!-- Rich deep premium forest green gradient -->
-    <linearGradient id="green-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1B382B"/>
-      <stop offset="100%" stop-color="#0F241B"/>
+    <linearGradient id="accent-green-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8FA493"/>
+      <stop offset="100%" stop-color="#4A5D4E"/>
     </linearGradient>
-
-    <!-- Spring fresh green for leaf details -->
-    <linearGradient id="sprout-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#8DB640"/>
-      <stop offset="100%" stop-color="#4E7026"/>
+    <linearGradient id="light-green-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D6E2D8"/>
+      <stop offset="100%" stop-color="#A5B8AA"/>
     </linearGradient>
-
-    <filter id="soft-shadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000" flood-opacity="0.12" />
+    <filter id="gentle-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#4A5D4E" flood-opacity="0.15" />
     </filter>
   </defs>
 
-  <!-- Ambient light outer background to preserve editorial aesthetic if displayed standalone -->
-  <circle cx="250" cy="250" r="235" fill="#FCFBF7" stroke="#ECE9DE" stroke-width="1.5" />
+  <!-- Circular background to preserve maskable aesthetic for home screen install -->
+  <circle cx="250" cy="245" r="225" fill="#FCFBF7" stroke="#ECE9DE" stroke-width="2" />
+  <circle cx="250" cy="245" r="210" stroke="#4A5D4E" stroke-opacity="0.08" stroke-width="1.5" stroke-dasharray="6 4" fill="none" />
 
-  <!-- Outer Double Gold Ring Frame -->
-  <circle cx="250" cy="242" r="185" stroke="url(#gold-grad)" stroke-width="2" fill="none" />
-  <circle cx="250" cy="242" r="180" stroke="url(#gold-grad)" stroke-width="0.8" stroke-dasharray="4 3" fill="none" />
+  <!-- The Centered Stylized Pot with Sprout/Seedling Design -->
+  <g transform="translate(0, -15)" filter="url(#gentle-shadow)">
+    <!-- Soil mound in the pot -->
+    <path d="M 185 295 Q 250 280 315 295" stroke="#4A5D4E" stroke-width="2" fill="none" />
 
-  <!-- Top Curved Leaf Sprays (Circular Border Accent) -->
-  <path d="M 120 120 C 145 85, 200 70, 250 70" stroke="url(#gold-grad)" stroke-width="1.5" fill="none" stroke-linecap="round" />
-  <path d="M 380 120 C 355 85, 300 70, 250 70" stroke="url(#gold-grad)" stroke-width="1.5" fill="none" stroke-linecap="round" />
-  
-  <!-- Left Side Top Leaves -->
-  <path d="M 140 108 C 130 95, 115 105, 125 115 C 135 125, 145 120, 140 108 Z" fill="url(#sprout-grad)" />
-  <path d="M 175 92 C 168 80, 150 85, 160 100 C 170 115, 180 105, 175 92 Z" fill="url(#gold-grad)" />
-  <path d="M 215 80 C 210 65, 192 70, 202 85 C 212 100, 220 90, 215 80 Z" fill="url(#sprout-grad)" />
+    <!-- Stem of the sprout -->
+    <!-- Thick elegant main stem branching up from pot -->
+    <path d="M 250 290 Q 240 220 252 140" stroke="url(#brand-green-grad)" stroke-width="10" stroke-linecap="round" fill="none" />
+    <path d="M 252 140 Q 262 105 285 85" stroke="url(#brand-green-grad)" stroke-width="6" stroke-linecap="round" fill="none" />
 
-  <!-- Right Side Top Leaves -->
-  <path d="M 360 108 C 370 95, 385 105, 375 115 C 365 125, 355 120, 360 108 Z" fill="url(#sprout-grad)" />
-  <path d="M 325 92 C 332 80, 350 85, 340 100 C 330 115, 320 105, 325 92 Z" fill="url(#gold-grad)" />
-  <path d="M 285 80 C 290 65, 308 70, 298 85 C 288 100, 280 90, 285 80 Z" fill="url(#sprout-grad)" />
+    <!-- Leaves: Modern, flat, dual-tone geometric organic shapes -->
+    <!-- Leaf 1 (Bottom Left) -->
+    <path d="M 245 240 C 205 245, 175 220, 195 185 C 215 185, 240 205, 245 240 Z" fill="url(#accent-green-grad)" />
+    <path d="M 245 240 C 220 225, 205 210, 195 185 C 215 185, 230 195, 245 240 Z" fill="url(#light-green-grad)" opacity="0.8" />
+    <path d="M 245 240 C 205 245, 175 220, 195 185 C 215 185, 240 205, 245 240" stroke="#4A5D4E" stroke-width="2.5" stroke-linejoin="round" fill="none" />
 
-  <!-- Central Monogram "DK" artwork in bold editorial serif -->
-  <g transform="translate(115, 95)" filter="url(#soft-shadow)">
-    <!-- Elegant Botanical Leaf wrapping the letters -->
-    <path d="M 60 130 C 50 100, 100 60, 140 70 C 110 95, 115 120, 142 125 C 110 140, 80 150, 60 130 Z" fill="url(#sprout-grad)" opacity="0.9" />
-    <path d="M 135 90 C 155 70, 210 65, 200 105 C 185 135, 145 130, 135 90 Z" fill="url(#gold-grad)" opacity="0.85" />
+    <!-- Leaf 2 (Middle Right) -->
+    <path d="M 248 190 C 290 195, 320 170, 300 135 C 280 135, 255 155, 248 190 Z" fill="url(#accent-green-grad)" />
+    <path d="M 248 190 C 273 175, 288 160, 300 135 C 280 135, 265 145, 248 190 Z" fill="url(#light-green-grad)" opacity="0.8" />
+    <path d="M 248 190 C 290 195, 320 170, 300 135 C 280 135, 255 155, 248 190" stroke="#4A5D4E" stroke-width="2.5" stroke-linejoin="round" fill="none" />
 
-    <!-- 'D' - styled vector path for perfect resolution across platforms -->
-    <path d="M 25 35 L 75 35 C 120 35, 145 55, 145 100 C 145 145, 115 165, 75 165 L 25 165 Z 
-             M 55 58 L 55 142 L 72 142 C 98 142, 114 128, 114 100 C 114 72, 98 58, 72 58 Z" 
-          fill="url(#green-grad)" stroke="url(#gold-grad)" stroke-width="1.8" />
-          
-    <!-- 'K' - styled vector path overlapping elegantly with 'D' -->
-    <path d="M 130 35 L 160 35 L 160 95 L 210 35 L 245 35 L 185 105 L 250 165 L 212 165 L 160 115 L 160 165 L 130 165 Z" 
-          fill="url(#green-grad)" stroke="url(#gold-grad)" stroke-width="1.8" />
+    <!-- Leaf 3 (Top Left branch) -->
+    <path d="M 252 140 C 225 130, 210 100, 235 75 C 250 85, 255 115, 252 140 Z" fill="url(#light-green-grad)" />
+    <path d="M 252 140 C 225 130, 210 100, 235 75 C 250 85, 255 115, 252 140" stroke="#4A5D4E" stroke-width="2.5" stroke-linejoin="round" fill="none" />
+
+    <!-- Leaf 4 (Top Sprout Terminal) -->
+    <path d="M 285 85 C 295 55, 275 35, 245 45 C 245 65, 265 80, 285 85 Z" fill="url(#accent-green-grad)" />
+    <path d="M 285 85 C 295 55, 275 35, 245 45" stroke="#4A5D4E" stroke-width="2.5" stroke-linejoin="round" fill="none" />
+
+    <!-- Stylized modern pot / planter -->
+    <!-- Pot Rim -->
+    <rect x="165" y="290" width="170" height="15" rx="7.5" fill="url(#brand-green-grad)" stroke="#4A5D4E" stroke-width="3" />
+    <!-- Pot Body (Tapered) -->
+    <path d="M 178 305 L 195 390 C 197 398, 203 405, 212 405 H 288 C 297 405, 303 398, 305 390 L 322 305 Z" fill="url(#light-green-grad)" stroke="#4A5D4E" stroke-width="3" stroke-linejoin="round" />
+    
+    <!-- Pot accent pattern - minimalist line cutouts -->
+    <path d="M 215 330 H 285" stroke="#4A5D4E" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+    <path d="M 225 355 H 275" stroke="#4A5D4E" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+    <path d="M 235 380 H 265" stroke="#4A5D4E" stroke-width="2.1" stroke-linecap="round" opacity="0.6" />
   </g>
 
-  <!-- Grounding Garden Plant Sprouts around Monogram -->
-  <g transform="translate(50, 255)">
-    <!-- Decorative side vector ferns -->
-    <path d="M 30 15 C 20 8, 5 -10, -5 -2 C -15 6, -5 20, 15 18 C 25 15, 35 22, 30 15 Z" fill="url(#sprout-grad)" />
-    <path d="M 370 15 C 380 8, 395 -10, 405 -2 C 415 6, 405 20, 385 18 C 375 15, 365 22, 370 15 Z" fill="url(#sprout-grad)" />
-  </g>
-
-  <!-- "DEVAKUSUMA" Main Caption -->
-  <text x="250" y="365" 
+  <!-- Beautiful typography for consistent app identity design -->
+  <text x="250" y="445" 
         text-anchor="middle" 
-        font-family="'Playfair Display', 'Didot', 'Georgia', 'serif'" 
-        font-size="38" 
+        font-family="'Inter', 'Outfit', 'Space Grotesk', sans-serif" 
+        font-size="16" 
         font-weight="bold" 
         letter-spacing="5" 
-        fill="#11291F" 
-        filter="url(#soft-shadow)">DEVAKUSUMA</text>
-        
-  <!-- "NURSERY GARDENS" Subtitle -->
-  <text x="250" y="398" 
-        text-anchor="middle" 
-        font-family="'Inter', 'Montserrat', 'sans-serif'" 
-        font-size="13" 
-        font-weight="800" 
-        letter-spacing="6" 
-        fill="#B89443">NURSERY GARDENS</text>
-
-  <!-- Accent Bottom Scroll Lines -->
-  <path d="M 120 415 L 195 415" stroke="url(#gold-grad)" stroke-width="1.5" stroke-linecap="round" />
-  <circle cx="205" cy="415" r="3" fill="#B89443" />
-  
-  <!-- Flowering decorative center bottom element -->
-  <path d="M 240 430 C 240 420, 245 425, 250 418 C 255 425, 260 420, 260 430 C 255 435, 245 435, 240 430 Z" fill="url(#sprout-grad)" />
-  <path d="M 228 426 C 233 420, 238 423, 243 429" stroke="url(#gold-grad)" stroke-width="1.2" fill="none" />
-  <path d="M 272 426 C 267 420, 262 423, 257 429" stroke="url(#gold-grad)" stroke-width="1.2" fill="none" />
-
-  <circle cx="295" cy="415" r="3" fill="#B89443" />
-  <path d="M 305 415 L 380 415" stroke="url(#gold-grad)" stroke-width="1.5" stroke-linecap="round" />
+        fill="#4A5D4E">DEVAKUSUMA</text>
 </svg>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { InventoryItem, PurchaseRecord, SalesRecord, NurseryUser, ExpenseRecord, ExpenseCategory } from "./types";
+import { InventoryItem, PurchaseRecord, SalesRecord, NurseryUser, ExpenseRecord, ExpenseCategory, ExpenseSubcategory } from "./types";
 import { INITIAL_INVENTORY, INITIAL_PURCHASES, INITIAL_SALES } from "./sampleData";
 import { motion, AnimatePresence } from "motion/react";
 import { fetchCollection, saveItem, removeItem, clearCollection, subscribeCollection } from "./lib/firebase";
@@ -33,6 +33,7 @@ export default function App() {
   const [sales, setSales] = useState<SalesRecord[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+  const [subcategories, setSubcategories] = useState<ExpenseSubcategory[]>([]);
   const [usersList, setUsersList] = useState<NurseryUser[]>([]);
   const [appLogo, setAppLogo] = useState<string>(() => {
     return localStorage.getItem("devakusuma_logo_url") || "/logo.svg";
@@ -205,17 +206,26 @@ export default function App() {
       localStorage.setItem("devakusuma_categories", JSON.stringify([]));
     }
 
+    const localSub = localStorage.getItem("devakusuma_subcategories");
+    if (localSub) {
+      setSubcategories(JSON.parse(localSub));
+    } else {
+      setSubcategories([]);
+      localStorage.setItem("devakusuma_subcategories", JSON.stringify([]));
+    }
+
     // 4. Async Firestore Sync
     const unsubscribes: (() => void)[] = [];
 
     const syncFromFirestore = async () => {
       try {
-        const [dbInventory, dbPurchases, dbSales, dbExpenses, dbCategories] = await Promise.all([
+        const [dbInventory, dbPurchases, dbSales, dbExpenses, dbCategories, dbSubcategories] = await Promise.all([
           fetchCollection<InventoryItem>("inventory"),
           fetchCollection<PurchaseRecord>("purchases"),
           fetchCollection<SalesRecord>("sales"),
           fetchCollection<ExpenseRecord>("expenses"),
           fetchCollection<ExpenseCategory>("expenseCategories"),
+          fetchCollection<ExpenseSubcategory>("expenseSubcategories"),
         ]);
 
         if (dbInventory && dbInventory.length > 0) {
@@ -286,6 +296,19 @@ export default function App() {
           }
         }
 
+        if (dbSubcategories && dbSubcategories.length > 0) {
+          setSubcategories(dbSubcategories);
+          localStorage.setItem("devakusuma_subcategories", JSON.stringify(dbSubcategories));
+        } else {
+          const localSubData = localStorage.getItem("devakusuma_subcategories");
+          if (localSubData) {
+            const parsed = JSON.parse(localSubData) as ExpenseSubcategory[];
+            for (const record of parsed) {
+              saveItem("expenseSubcategories", record.id, record).catch(console.error);
+            }
+          }
+        }
+
         // Setup real-time subscribers after initial seed/fill checks
         const u1 = subscribeCollection<InventoryItem>("inventory", (items) => {
           if (items) {
@@ -315,6 +338,12 @@ export default function App() {
           if (items) {
             setCategories(items);
             localStorage.setItem("devakusuma_categories", JSON.stringify(items));
+          }
+        });
+        const u8 = subscribeCollection<ExpenseSubcategory>("expenseSubcategories", (items) => {
+          if (items) {
+            setSubcategories(items);
+            localStorage.setItem("devakusuma_subcategories", JSON.stringify(items));
           }
         });
         const u6 = subscribeCollection<NurseryUser>("users", (items) => {
@@ -351,7 +380,7 @@ export default function App() {
           }
         });
 
-        unsubscribes.push(u1, u2, u3, u4, u5, u6, u7);
+        unsubscribes.push(u1, u2, u3, u4, u5, u6, u7, u8);
       } catch (err) {
         console.warn("Could not sync records from Firestore, using offline cache:", err);
       }
@@ -865,6 +894,27 @@ export default function App() {
     saveItem("expenseCategories", newCategory.id, newCategory).catch(console.error);
   };
 
+  // Expense Handler: Add Custom Subcategory
+  const handleAddSubcategory = (categoryName: string, name: string) => {
+    const newSub: ExpenseSubcategory = {
+      id: `sub-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      categoryName,
+      name,
+    };
+    const updated = [...subcategories, newSub];
+    setSubcategories(updated);
+    localStorage.setItem("devakusuma_subcategories", JSON.stringify(updated));
+    saveItem("expenseSubcategories", newSub.id, newSub).catch(console.error);
+  };
+
+  // Expense Handler: Delete Subcategory
+  const handleDeleteSubcategory = (id: string) => {
+    const updated = subcategories.filter((s) => s.id !== id);
+    setSubcategories(updated);
+    localStorage.setItem("devakusuma_subcategories", JSON.stringify(updated));
+    removeItem("expenseSubcategories", id).catch(console.error);
+  };
+
   // Wipe statistics reset (for easy demo testing)
   const handleResetData = () => {
     setShowResetModal(true);
@@ -876,23 +926,27 @@ export default function App() {
     const salIds = sales.map((i) => i.id);
     const expIds = expenses.map((i) => i.id);
     const catIds = categories.map((i) => i.id);
+    const subIds = subcategories.map((i) => i.id);
 
     clearCollection("inventory", invIds).catch((err) => console.error("Error clearing inventory:", err));
     clearCollection("purchases", purIds).catch((err) => console.error("Error clearing purchases:", err));
     clearCollection("sales", salIds).catch((err) => console.error("Error clearing sales:", err));
     clearCollection("expenses", expIds).catch((err) => console.error("Error clearing expenses:", err));
     clearCollection("expenseCategories", catIds).catch((err) => console.error("Error clearing categories:", err));
+    clearCollection("expenseSubcategories", subIds).catch((err) => console.error("Error clearing subcategories:", err));
 
     localStorage.removeItem("devakusuma_inventory");
     localStorage.removeItem("devakusuma_purchases");
     localStorage.removeItem("devakusuma_sales");
     localStorage.removeItem("devakusuma_expenses");
     localStorage.removeItem("devakusuma_categories");
+    localStorage.removeItem("devakusuma_subcategories");
     setInventory(INITIAL_INVENTORY);
     setPurchases(INITIAL_PURCHASES);
     setSales(INITIAL_SALES);
     setExpenses([]);
     setCategories([]);
+    setSubcategories([]);
     setShowResetModal(false);
   };
 
@@ -1033,7 +1087,7 @@ export default function App() {
           transition={{ delay: 1.2, duration: 1 }}
           className="absolute bottom-8 text-[8px] font-sans text-white/40 tracking-[0.3em] uppercase"
         >
-          Karnataka, India &bull; Est. 1977
+          Kadiyam, India &bull; Est. 1977
         </motion.div>
       </div>
     );
@@ -1276,10 +1330,13 @@ export default function App() {
           <ExpensesView
             expenses={expenses}
             categories={categories}
+            subcategories={subcategories}
             onAddExpense={handleAddExpense}
             onUpdateExpense={handleUpdateExpense}
             onDeleteExpense={handleDeleteExpense}
             onAddCategory={handleAddCategory}
+            onAddSubcategory={handleAddSubcategory}
+            onDeleteSubcategory={handleDeleteSubcategory}
             isReadOnly={isReadOnly}
           />
         )}

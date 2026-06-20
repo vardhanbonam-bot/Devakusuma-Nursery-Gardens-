@@ -238,7 +238,7 @@ export default function SalesView({
       doc.setFont("helvetica", "normal");
       doc.setFontSize(7.5);
       doc.setTextColor(110, 110, 95);
-      doc.text("Loc: Devakusuma Farms & Nursery, Karnataka", 12, 27);
+      doc.text("Loc: Devakusuma Farms & Nursery, Kadiyam, India", 12, 27);
 
       // Horiz rule
       doc.setDrawColor(215, 215, 200);
@@ -858,7 +858,7 @@ export default function SalesView({
                   <div className="text-center space-y-0.5">
                     <h3 className="text-lg font-serif font-bold text-editorial-dark tracking-tight">DEVAKUSUMA NURSERY GARDENS</h3>
                     <p className="text-[9px] font-sans uppercase tracking-[0.1em] text-editorial-primary/80">Live Botanical Greenhouse</p>
-                    <p className="text-[9px] font-mono text-editorial-primary/50">Farms & Nursery, Karnataka</p>
+                    <p className="text-[9px] font-mono text-editorial-primary/50">Farms & Nursery, Kadiyam, India</p>
                     <div className="border-b border-dashed border-editorial-primary/20 my-3"></div>
                     <h4 className="text-[10px] font-sans font-bold uppercase tracking-widest text-[#5A5A40]">POS SALES MEMO</h4>
                   </div>
