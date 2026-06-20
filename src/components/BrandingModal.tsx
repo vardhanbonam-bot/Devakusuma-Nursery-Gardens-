@@ -12,15 +12,28 @@ interface BrandingModalProps {
   appLogo: string;
 }
 
-// Inline image resizing helper using HTML5 Canvas to produce optimized, lightweight WebP compressed base64 string
+// Inline image resizing helper using HTML5 Canvas to produce optimized, lightweight compressed base64 string
 const resizeImage = (base64Str: string, maxWidth = 192, maxHeight = 192): Promise<string> => {
   return new Promise((resolve) => {
+    // If the image is extremely tiny (e.g. less than 8KB), we can skip compression to save processing cycles
+    if (base64Str.length < 8000) {
+      resolve(base64Str);
+      return;
+    }
+
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement("canvas");
       let width = img.width;
       let height = img.height;
 
+      // Handle invalid or zero-dimension images
+      if (!width || !height) {
+        resolve(base64Str);
+        return;
+      }
+
+      // Calculate perfect aspect ratio
       if (width > height) {
         if (width > maxWidth) {
           height = Math.round((height * maxWidth) / width);
@@ -37,14 +50,31 @@ const resizeImage = (base64Str: string, maxWidth = 192, maxHeight = 192): Promis
       canvas.height = height;
       const ctx = canvas.getContext("2d");
       if (ctx) {
+        // Clear transparency
         ctx.clearRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/webp", 0.7)); // WebP with 70% quality compression
+        
+        // Try to export as WebP with 0.60 quality
+        let result = canvas.toDataURL("image/webp", 0.6);
+        
+        // If the browser does not support WebP, canvas falls back to image/png (lossless, can be very large).
+        // If it starts with image/png, re-encode to image/jpeg which is lossy and compresses beautifully on all browsers.
+        if (result.startsWith("data:image/png")) {
+          result = canvas.toDataURL("image/jpeg", 0.6);
+        }
+        
+        resolve(result);
       } else {
         resolve(base64Str);
       }
     };
-    img.onerror = () => resolve(base64Str);
+    
+    // In case the image load triggers an error (e.g., due to corrupt base64, data URL limitations, or high-res iOS limits)
+    img.onerror = () => {
+      console.warn("resizeImage: Falling back to original image due to load failure.");
+      resolve(base64Str);
+    };
+    
     img.src = base64Str;
   });
 };
@@ -97,18 +127,32 @@ export default function BrandingModal({
     try {
       setIsUploadingLogo(true);
       const rawBase64 = await processFile(file);
-      // Let's compress slightly larger files (like SVG are small, but raw PNG/JPG should be optimized)
-      // If SVG, save directly, otherwise resize & compress
+      
       let processedBase64 = rawBase64;
-      if (!file.type.includes("svg")) {
-        processedBase64 = await resizeImage(rawBase64, 256, 256);
+      // If it's not an SVG, or even if it IS an SVG but the file is larger than 200 KB, let's compress/rasterize it!
+      if (!file.type.includes("svg") || rawBase64.length > 200000) {
+        processedBase64 = await resizeImage(rawBase64, 160, 160); // 160x160 is perfect for nursery logo sizes and ultra fast to load
+      }
+
+      // Check if the final string size is too large for database limits (e.g., > 600 KB)
+      if (processedBase64.length > 600000) {
+        processedBase64 = await resizeImage(rawBase64, 100, 100);
+      }
+
+      if (processedBase64.length > 900000) {
+        throw new Error("This image is extremely large or rich in complexity. Please upload a standard JPG/PNG photo under 3MB so our automated engine can compress it for you!");
       }
 
       await saveItem("settings", "branding", { id: "branding", logoUrl: processedBase64 });
       showFeedback("System branding logo updated successfully in real-time!", "success");
     } catch (err) {
-      console.error(err);
-      showFeedback("Could not save the branding logo. Please try a smaller image.", "error");
+      console.error("Logo upload error details: ", err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.includes("automated engine") || errMsg.includes("complexity") || errMsg.includes("exceeds")) {
+        showFeedback(errMsg, "error");
+      } else {
+        showFeedback("Could not save the branding logo. For best compatibility, please select a standard PNG, JPG, or WebP image.", "error");
+      }
     } finally {
       setIsUploadingLogo(false);
     }
@@ -138,7 +182,17 @@ export default function BrandingModal({
     try {
       setIsUploadingAvatar(true);
       const rawBase64 = await processFile(file);
-      const optimizedBase64 = await resizeImage(rawBase64, 180, 180);
+      let optimizedBase64 = await resizeImage(rawBase64, 180, 180);
+
+      // Check if the final string size is too large for database limits (e.g., > 900 KB)
+      if (optimizedBase64.length > 900000) {
+        // Drop down size to 120x120
+        optimizedBase64 = await resizeImage(rawBase64, 120, 120);
+      }
+
+      if (optimizedBase64.length > 950000) {
+        throw new Error("This profile picture is too detailed and exceeds safe database limits. Please try a smaller photo.");
+      }
 
       // Save user details with new avatarImage to Firestore users collection
       const updatedUser = {
@@ -149,8 +203,13 @@ export default function BrandingModal({
       await saveItem("users", targetUser.id, updatedUser);
       showFeedback(`Display picture for "${targetUser.username}" updated successfully!`, "success");
     } catch (err) {
-      console.error(err);
-      showFeedback("Could not save display picture. Please try again.", "error");
+      console.error("Avatar upload error details: ", err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.includes("safe database limits") || errMsg.includes("exceeds")) {
+        showFeedback(errMsg, "error");
+      } else {
+        showFeedback("Could not save display picture. Please try a smaller or lower resolution photo.", "error");
+      }
     } finally {
       setIsUploadingAvatar(false);
     }

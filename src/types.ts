@@ -17,16 +17,33 @@ export interface PurchaseRecord {
   totalPurchaseCost: number;
 }
 
+export interface SaleLineItem {
+  plantName: string;
+  size: string;
+  quantity: number;
+  sellingPrice: number;
+  mrpAtSale: number;
+}
+
 export interface SalesRecord {
   id: string;
   invoiceNumber: string; // e.g., "INV-2026-0001"
   saleDate: string; // YYYY-MM-DD
   customerName: string;
-  plantName: string;
-  plantSize: string;
-  quantitySold: number;
-  sellingPrice: number;
   totalSaleValue: number;
+
+  // Multiple items field
+  items?: SaleLineItem[];
+
+  // Legacy fields for backward compatibility
+  plantName?: string;
+  plantSize?: string;
+  quantitySold?: number;
+  sellingPrice?: number;
+
+  // New fields from prompt
+  sellerName?: string;
+  createdAt?: string; // ISO string
 }
 
 export interface SeasonalInfo {

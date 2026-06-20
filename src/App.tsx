@@ -42,6 +42,10 @@ export default function App() {
   // Navigation tab tracker
   const [activeTab, setActiveTab ] = useState<"dashboard" | "inventory" | "purchase" | "sales" | "expenses">("dashboard");
 
+  // Inactivity Security Constants
+  const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour (configurable constant)
+  const LAST_ACTIVE_KEY = "devakusuma_last_active_time";
+
   const isReadOnly = currentUser
     ? !(
         currentUser.username === "Sri Rama Satya" ||
@@ -67,6 +71,51 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Listen for window focus & active interactions to prevent or trigger inactivity sign-out
+  useEffect(() => {
+    const checkInactivity = () => {
+      const localSession = localStorage.getItem("devakusuma_session_user");
+      if (!localSession) return;
+
+      const lastActive = localStorage.getItem(LAST_ACTIVE_KEY);
+      const now = Date.now();
+      if (lastActive) {
+        const lastActiveTime = parseInt(lastActive, 10);
+        if (now - lastActiveTime > INACTIVITY_TIMEOUT_MS) {
+          setCurrentUser(null);
+          localStorage.removeItem("devakusuma_session_user");
+          localStorage.removeItem("active_user");
+          alert("You have been signed out due to 1 hour of inactivity.");
+          return true;
+        }
+      }
+      localStorage.setItem(LAST_ACTIVE_KEY, now.toString());
+      return false;
+    };
+
+    const recordActivity = () => {
+      const localSession = localStorage.getItem("devakusuma_session_user");
+      if (localSession) {
+        localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
+      }
+    };
+
+    // Listeners for activity
+    window.addEventListener("focus", checkInactivity);
+    window.addEventListener("mousedown", recordActivity);
+    window.addEventListener("keydown", recordActivity);
+    window.addEventListener("touchstart", recordActivity);
+    window.addEventListener("scroll", recordActivity);
+
+    return () => {
+      window.removeEventListener("focus", checkInactivity);
+      window.removeEventListener("mousedown", recordActivity);
+      window.removeEventListener("keydown", recordActivity);
+      window.removeEventListener("touchstart", recordActivity);
+      window.removeEventListener("scroll", recordActivity);
+    };
+  }, []);
+
   useEffect(() => {
     // 0. Purity system upgrade - safe cleanup of old sandboxed database entries
     const isPurityCleared = localStorage.getItem("devakusuma_purity_v1");
@@ -75,6 +124,26 @@ export default function App() {
       localStorage.removeItem("devakusuma_purchases");
       localStorage.removeItem("devakusuma_sales");
       localStorage.setItem("devakusuma_purity_v1", "true");
+    }
+
+    // 0.25 Inactivity dynamic session check on app load
+    const lastActive = localStorage.getItem(LAST_ACTIVE_KEY);
+    const now = Date.now();
+    let isInactive = false;
+    if (lastActive) {
+      const lastActiveTime = parseInt(lastActive, 10);
+      if (now - lastActiveTime > INACTIVITY_TIMEOUT_MS) {
+        localStorage.removeItem("devakusuma_session_user");
+        localStorage.removeItem("active_user");
+        isInactive = true;
+      }
+    }
+    localStorage.setItem(LAST_ACTIVE_KEY, now.toString());
+
+    if (isInactive) {
+      setTimeout(() => {
+        alert("You have been signed out due to 1 hour of inactivity.");
+      }, 500);
     }
 
     // 0.5 Authenticated session loading
@@ -506,23 +575,64 @@ export default function App() {
     localStorage.setItem("devakusuma_sales", JSON.stringify(updatedSales));
     saveItem("sales", newSale.id, newSale).catch(console.error);
 
-    // Decrease Inventory quantity
-    const matchedIdx = inventory.findIndex(
-      (inv) =>
-        inv.plantName.toLowerCase() === record.plantName.toLowerCase() &&
-        inv.plantSize === record.plantSize
-    );
+    const updatedInventory = [...inventory];
 
-    if (matchedIdx !== -1) {
-      const updatedInventory = [...inventory];
-      updatedInventory[matchedIdx].quantityAvailable = Math.max(
-        0,
-        updatedInventory[matchedIdx].quantityAvailable - record.quantitySold
+    // Decrease Inventory quantity
+    if (newSale.items && newSale.items.length > 0) {
+      newSale.items.forEach((item) => {
+        const matchedIdx = updatedInventory.findIndex(
+          (inv) =>
+            inv.plantName.toLowerCase() === item.plantName.toLowerCase() &&
+            inv.plantSize.toLowerCase() === item.size.toLowerCase()
+        );
+        if (matchedIdx !== -1) {
+          updatedInventory[matchedIdx].quantityAvailable = Math.max(
+            0,
+            updatedInventory[matchedIdx].quantityAvailable - item.quantity
+          );
+          saveItem("inventory", updatedInventory[matchedIdx].id, updatedInventory[matchedIdx]).catch(console.error);
+        } else {
+          // Auto-create new variety in inventory for custom sizes sold directly
+          const newInvItem = {
+            id: `inv-p-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+            plantName: item.plantName,
+            plantSize: item.size,
+            quantityAvailable: 0,
+            sellingPrice: item.sellingPrice,
+          };
+          updatedInventory.push(newInvItem);
+          saveItem("inventory", newInvItem.id, newInvItem).catch(console.error);
+        }
+      });
+    } else if (newSale.plantName && newSale.plantSize) {
+      // Legacy single-item fallback
+      const matchedIdx = updatedInventory.findIndex(
+        (inv) =>
+          inv.plantName.toLowerCase() === newSale.plantName!.toLowerCase() &&
+          inv.plantSize.toLowerCase() === newSale.plantSize!.toLowerCase()
       );
-      setInventory(updatedInventory);
-      localStorage.setItem("devakusuma_inventory", JSON.stringify(updatedInventory));
-      saveItem("inventory", updatedInventory[matchedIdx].id, updatedInventory[matchedIdx]).catch(console.error);
+
+      if (matchedIdx !== -1) {
+        updatedInventory[matchedIdx].quantityAvailable = Math.max(
+          0,
+          updatedInventory[matchedIdx].quantityAvailable - (newSale.quantitySold || 0)
+        );
+        saveItem("inventory", updatedInventory[matchedIdx].id, updatedInventory[matchedIdx]).catch(console.error);
+      } else {
+        const newInvItem = {
+          id: `inv-p-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          plantName: newSale.plantName!,
+          plantSize: newSale.plantSize!,
+          quantityAvailable: 0,
+          sellingPrice: newSale.sellingPrice || 0,
+        };
+        updatedInventory.push(newInvItem);
+        saveItem("inventory", newInvItem.id, newInvItem).catch(console.error);
+      }
     }
+
+    setInventory(updatedInventory);
+    localStorage.setItem("devakusuma_inventory", JSON.stringify(updatedInventory));
 
     return newSale; // Returns sale for modal trigger
   };
@@ -538,20 +648,36 @@ export default function App() {
     localStorage.setItem("devakusuma_sales", JSON.stringify(updatedSales));
     removeItem("sales", saleId).catch(console.error);
 
-    // Rollback Inventory: add the quantity back
-    const matchedIdx = inventory.findIndex(
-      (inv) =>
-        inv.plantName.toLowerCase() === saleToDelete.plantName.toLowerCase() &&
-        inv.plantSize === saleToDelete.plantSize
-    );
+    const updatedInventory = [...inventory];
 
-    if (matchedIdx !== -1) {
-      const updatedInventory = [...inventory];
-      updatedInventory[matchedIdx].quantityAvailable += saleToDelete.quantitySold;
-      setInventory(updatedInventory);
-      localStorage.setItem("devakusuma_inventory", JSON.stringify(updatedInventory));
-      saveItem("inventory", updatedInventory[matchedIdx].id, updatedInventory[matchedIdx]).catch(console.error);
+    // Rollback Inventory: add the quantity back
+    if (saleToDelete.items && saleToDelete.items.length > 0) {
+      saleToDelete.items.forEach((item) => {
+        const matchedIdx = updatedInventory.findIndex(
+          (inv) =>
+            inv.plantName.toLowerCase() === item.plantName.toLowerCase() &&
+            inv.plantSize.toLowerCase() === item.size.toLowerCase()
+        );
+        if (matchedIdx !== -1) {
+          updatedInventory[matchedIdx].quantityAvailable += item.quantity;
+          saveItem("inventory", updatedInventory[matchedIdx].id, updatedInventory[matchedIdx]).catch(console.error);
+        }
+      });
+    } else if (saleToDelete.plantName && saleToDelete.plantSize) {
+      const matchedIdx = updatedInventory.findIndex(
+        (inv) =>
+          inv.plantName.toLowerCase() === saleToDelete.plantName!.toLowerCase() &&
+          inv.plantSize === saleToDelete.plantSize
+      );
+
+      if (matchedIdx !== -1) {
+        updatedInventory[matchedIdx].quantityAvailable += (saleToDelete.quantitySold || 0);
+        saveItem("inventory", updatedInventory[matchedIdx].id, updatedInventory[matchedIdx]).catch(console.error);
+      }
     }
+
+    setInventory(updatedInventory);
+    localStorage.setItem("devakusuma_inventory", JSON.stringify(updatedInventory));
   };
 
   // System Handler: Update / Edit Sale
@@ -559,31 +685,35 @@ export default function App() {
     const oldSale = sales.find((s) => s.id === updatedSale.id);
     if (!oldSale) return;
 
-    // Diff in quantity sold
-    const diffQty = oldSale.quantitySold - updatedSale.quantitySold;
-
     // Update sales state
     const updatedSales = sales.map((s) => (s.id === updatedSale.id ? updatedSale : s));
     setSales(updatedSales);
     localStorage.setItem("devakusuma_sales", JSON.stringify(updatedSales));
     saveItem("sales", updatedSale.id, updatedSale).catch(console.error);
 
-    // Sync Inventory stock
-    const matchedIdx = inventory.findIndex(
-      (inv) =>
-        inv.plantName.toLowerCase() === updatedSale.plantName.toLowerCase() &&
-        inv.plantSize === updatedSale.plantSize
-    );
+    // Sync Inventory stock for legacy only (dynamic multi-item has editable customer/date and does not edit quantity post-sale)
+    if (!(updatedSale.items && updatedSale.items.length > 0) && updatedSale.plantName) {
+      // Diff in quantity sold
+      const oldQty = oldSale.quantitySold || 0;
+      const newQty = updatedSale.quantitySold || 0;
+      const diffQty = oldQty - newQty;
 
-    if (matchedIdx !== -1) {
-      const updatedInventory = [...inventory];
-      updatedInventory[matchedIdx].quantityAvailable = Math.max(
-        0,
-        updatedInventory[matchedIdx].quantityAvailable + diffQty
+      const matchedIdx = inventory.findIndex(
+        (inv) =>
+          inv.plantName.toLowerCase() === updatedSale.plantName!.toLowerCase() &&
+          inv.plantSize === updatedSale.plantSize
       );
-      setInventory(updatedInventory);
-      localStorage.setItem("devakusuma_inventory", JSON.stringify(updatedInventory));
-      saveItem("inventory", updatedInventory[matchedIdx].id, updatedInventory[matchedIdx]).catch(console.error);
+
+      if (matchedIdx !== -1) {
+        const updatedInventory = [...inventory];
+        updatedInventory[matchedIdx].quantityAvailable = Math.max(
+          0,
+          updatedInventory[matchedIdx].quantityAvailable + diffQty
+        );
+        setInventory(updatedInventory);
+        localStorage.setItem("devakusuma_inventory", JSON.stringify(updatedInventory));
+        saveItem("inventory", updatedInventory[matchedIdx].id, updatedInventory[matchedIdx]).catch(console.error);
+      }
     }
   };
 
@@ -783,61 +913,76 @@ export default function App() {
         />
 
         <div className="relative z-10 flex flex-col items-center text-center max-w-sm px-6">
-          {/* Official Devakusuma Logo with Spring and Glide Entry */}
-          <div className="w-48 h-48 mb-8 flex items-center justify-center relative">
+          {/* Stylized Pot with Sprout Logo */}
+          <div className="w-48 h-48 mb-6 flex items-center justify-center relative">
             <motion.div
               initial={{ opacity: 0, rotate: 0 }}
               animate={{ opacity: 0.45, rotate: 360 }}
               transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-              className="absolute -inset-3 border border-dashed border-[#D4AF37]/30 rounded-full pointer-events-none"
+              className="absolute -inset-3 border border-dashed border-[#72E088]/30 rounded-full pointer-events-none"
             />
             <motion.div
               initial={{ opacity: 0, rotate: 360 }}
               animate={{ opacity: 0.15, rotate: 0 }}
               transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
-              className="absolute -inset-5 border border-dotted border-[#A3B18A]/20 rounded-full pointer-events-none"
+              className="absolute -inset-5 border border-dotted border-[#4A5D4E]/20 rounded-full pointer-events-none"
             />
             
-            <motion.img
-              src="/logo.svg"
-              alt="Devakusuma Nursery Gardens Logo"
-              referrerPolicy="no-referrer"
-              initial={{ opacity: 0, scale: 0.6, y: 20, rotate: -6 }}
-              animate={{ opacity: 1, scale: 1, y: 0, rotate: 0 }}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.7, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{
                 type: "spring",
                 stiffness: 85,
                 damping: 14,
                 delay: 0.1
               }}
-              className="w-full h-full object-contain filter drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)]"
-            />
+              className="relative flex flex-col items-center justify-center w-36 h-36 border border-[#4A5D4E]/40 rounded-full bg-[#111A13]/90 shadow-2xl backdrop-blur-sm"
+            >
+              <div className="flex flex-col items-center relative -top-1">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: [0, 1.25, 1] }}
+                  transition={{ delay: 0.35, duration: 1.0, ease: "easeOut" }}
+                  className="text-[#72E088] filter drop-shadow-[0_0_10px_rgba(114,224,136,0.35)] -mb-0.5"
+                >
+                  <Sprout className="w-14 h-14" strokeWidth={1.5} />
+                </motion.div>
+                
+                <motion.div
+                  initial={{ opacity: 0, scaleY: 0 }}
+                  animate={{ opacity: 1, scaleY: 1 }}
+                  transition={{ delay: 0.2, duration: 0.6 }}
+                  className="w-10 h-6 bg-gradient-to-b from-[#4A5D4E] to-[#243127] rounded-b-lg border-t-2 border-[#72E088]/40 shadow-inner"
+                />
+              </div>
+            </motion.div>
           </div>
 
           {/* Title Header with Elegant Letter Spacing */}
-          <motion.h2
+          <motion.h1
             initial={{ opacity: 0, letterSpacing: "0.05em", y: 15 }}
             animate={{ opacity: 1, letterSpacing: "0.15em", y: 0 }}
             transition={{ delay: 0.45, duration: 1.0, ease: [0.16, 1, 0.3, 1] }}
             className="font-serif italic text-3.5xl font-extrabold tracking-wider text-white"
           >
             Devakusuma
-          </motion.h2>
+          </motion.h1>
 
           <motion.p
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 0.9, y: 0 }}
             transition={{ delay: 0.7, duration: 0.8, ease: "easeOut" }}
-            className="text-[10px] md:text-xs font-sans font-extrabold uppercase tracking-[0.25em] text-[#D4AF37] mt-3"
+            className="text-[11px] md:text-xs font-sans font-extrabold uppercase tracking-[0.25em] text-[#72E088] mt-3"
           >
-            Nursery Gardens
+            Nursery Management System
           </motion.p>
           
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 0.5 }}
             transition={{ delay: 0.9, duration: 0.8 }}
-            className="text-[8px] font-mono uppercase tracking-[0.18em] text-[#A3B18A] mt-1.5"
+            className="text-[8px] font-mono uppercase tracking-[0.18em] text-[#a3b18a] mt-2"
           >
             Botanical Stock & Invoice Ledger
           </motion.p>

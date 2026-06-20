@@ -15,25 +15,51 @@ export default function PurchaseView({ inventory, purchases, onAddPurchase, isRe
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split("T")[0]);
   const [supplierName, setSupplierName] = useState("");
   const [plantName, setPlantName] = useState("");
-  const [plantSize, setPlantSize] = useState("1 ft");
+  const [plantSize, setPlantSize] = useState("");
   const [quantityPurchased, setQuantityPurchased] = useState("");
   const [costPerUnit, setCostPerUnit] = useState("");
 
   // For new plants, we need to gather an expected selling price to initialize inventory properly.
   const [expectedSellingPrice, setExpectedSellingPrice] = useState("");
 
-  const sizeOptions = ["1 ft", "2 ft", "3 ft", "4 ft", "5 ft", "Creeper", "Seedling", "Sapling"];
+  // Unique sizes existing in inventory for this specific plant name
+  const existingSizesForPlant = React.useMemo(() => {
+    if (!plantName.trim()) return [];
+    return Array.from(
+      new Set(
+        inventory
+          .filter((item) => item.plantName.toLowerCase() === plantName.trim().toLowerCase())
+          .map((item) => item.plantSize)
+      )
+    );
+  }, [plantName, inventory]);
+
+  // Adjust size selection depending on plant name changes
+  React.useEffect(() => {
+    if (existingSizesForPlant.length > 0) {
+      setPlantSize(existingSizesForPlant[0]);
+    } else {
+      setPlantSize("");
+    }
+  }, [plantName, existingSizesForPlant]);
+
+  const finalPlantSize = plantSize.trim();
 
   // Check if plant already exists in inventory
   const matchedItem = inventory.find(
     (item) =>
       item.plantName.toLowerCase() === plantName.trim().toLowerCase() &&
-      item.plantSize === plantSize
+      item.plantSize.toLowerCase() === finalPlantSize.toLowerCase()
   );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!plantName.trim() || !supplierName.trim()) return;
+
+    if (!finalPlantSize) {
+      alert("Please specify a valid plant size.");
+      return;
+    }
 
     const qtyNum = parseInt(quantityPurchased, 10);
     const costNum = parseFloat(costPerUnit);
@@ -59,7 +85,7 @@ export default function PurchaseView({ inventory, purchases, onAddPurchase, isRe
         purchaseDate,
         supplierName: supplierName.trim(),
         plantName: plantName.trim(),
-        plantSize,
+        plantSize: finalPlantSize,
         quantityPurchased: qtyNum,
         costPerUnit: costNum,
         totalPurchaseCost: totalCost,
@@ -71,6 +97,8 @@ export default function PurchaseView({ inventory, purchases, onAddPurchase, isRe
     setSupplierName("");
     setPlantName("");
     setPlantSize("1 ft");
+    setCustomSizeText("");
+    setIsCustomSize(false);
     setQuantityPurchased("");
     setCostPerUnit("");
     setExpectedSellingPrice("");
@@ -193,19 +221,28 @@ export default function PurchaseView({ inventory, purchases, onAddPurchase, isRe
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Plant Size</label>
-                <select
+                <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Plant Size *</label>
+                <input
                   id="purchase-plant-size"
+                  type="text"
+                  required
+                  placeholder="e.g. 2 ft, 8 inch, XL"
                   value={plantSize}
                   onChange={(e) => setPlantSize(e.target.value)}
                   className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
-                >
-                  {sizeOptions.map((sz) => (
-                    <option key={sz} value={sz}>
-                      {sz}
-                    </option>
-                  ))}
-                </select>
+                  list="purchase-sizes-autocomplete"
+                />
+                <datalist id="purchase-sizes-autocomplete">
+                  {existingSizesForPlant.length > 0 ? (
+                    existingSizesForPlant.map((sz) => (
+                      <option key={sz} value={sz} />
+                    ))
+                  ) : (
+                    Array.from(new Set(inventory.map((i) => i.plantSize))).map((sz) => (
+                      <option key={sz} value={sz} />
+                    ))
+                  )}
+                </datalist>
               </div>
             </div>
 

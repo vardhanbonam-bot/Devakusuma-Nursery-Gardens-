@@ -171,12 +171,23 @@ export default function DashboardView({
   // 1. Calculate Best Sellers by Qty & Revenue
   const plantSummaries: { [key: string]: { qty: number; rev: number } } = {};
   sales.forEach((s) => {
-    const key = `${s.plantName} (${s.plantSize})`;
-    if (!plantSummaries[key]) {
-      plantSummaries[key] = { qty: 0, rev: 0 };
+    if (s.items && s.items.length > 0) {
+      s.items.forEach((item) => {
+        const key = `${item.plantName} (${item.size})`;
+        if (!plantSummaries[key]) {
+          plantSummaries[key] = { qty: 0, rev: 0 };
+        }
+        plantSummaries[key].qty += item.quantity;
+        plantSummaries[key].rev += item.quantity * item.sellingPrice;
+      });
+    } else if (s.plantName && s.plantSize && s.quantitySold) {
+      const key = `${s.plantName} (${s.plantSize})`;
+      if (!plantSummaries[key]) {
+        plantSummaries[key] = { qty: 0, rev: 0 };
+      }
+      plantSummaries[key].qty += s.quantitySold;
+      plantSummaries[key].rev += s.totalSaleValue;
     }
-    plantSummaries[key].qty += s.quantitySold;
-    plantSummaries[key].rev += s.totalSaleValue;
   });
 
   const bestSellersByQty = Object.entries(plantSummaries)
@@ -200,7 +211,13 @@ export default function DashboardView({
 
   const plantSalesQty: { [key: string]: number } = {};
   sales.forEach((s) => {
-    plantSalesQty[s.plantName] = (plantSalesQty[s.plantName] || 0) + s.quantitySold;
+    if (s.items && s.items.length > 0) {
+      s.items.forEach((item) => {
+        plantSalesQty[item.plantName] = (plantSalesQty[item.plantName] || 0) + item.quantity;
+      });
+    } else if (s.plantName && s.quantitySold) {
+      plantSalesQty[s.plantName] = (plantSalesQty[s.plantName] || 0) + s.quantitySold;
+    }
   });
 
   const slowMovers = inventory
@@ -237,12 +254,25 @@ export default function DashboardView({
   };
 
   sales.forEach((s) => {
-    const peakSeason = PLANT_PEAK_SEASONS[s.plantName];
-    if (peakSeason) {
-      if (peakSeason.includes("Summer")) seasonStats["Summer"] += s.totalSaleValue;
-      if (peakSeason.includes("Monsoon")) seasonStats["Monsoon"] += s.totalSaleValue;
-      if (peakSeason.includes("Winter")) seasonStats["Winter"] += s.totalSaleValue;
-      if (peakSeason.includes("Spring")) seasonStats["Spring"] += s.totalSaleValue;
+    if (s.items && s.items.length > 0) {
+      s.items.forEach((item) => {
+        const peakSeason = PLANT_PEAK_SEASONS[item.plantName];
+        if (peakSeason) {
+          const val = item.quantity * item.sellingPrice;
+          if (peakSeason.includes("Summer")) seasonStats["Summer"] += val;
+          if (peakSeason.includes("Monsoon")) seasonStats["Monsoon"] += val;
+          if (peakSeason.includes("Winter")) seasonStats["Winter"] += val;
+          if (peakSeason.includes("Spring")) seasonStats["Spring"] += val;
+        }
+      });
+    } else if (s.plantName) {
+      const peakSeason = PLANT_PEAK_SEASONS[s.plantName];
+      if (peakSeason) {
+        if (peakSeason.includes("Summer")) seasonStats["Summer"] += s.totalSaleValue;
+        if (peakSeason.includes("Monsoon")) seasonStats["Monsoon"] += s.totalSaleValue;
+        if (peakSeason.includes("Winter")) seasonStats["Winter"] += s.totalSaleValue;
+        if (peakSeason.includes("Spring")) seasonStats["Spring"] += s.totalSaleValue;
+      }
     }
   });
 
@@ -250,20 +280,42 @@ export default function DashboardView({
 
   // Assemble unified recent transactions listing
   const allTransactions = [
-    ...sales.map((s) => ({
-      id: s.id,
-      type: "sale" as const,
-      date: s.saleDate,
-      plantName: s.plantName,
-      plantSize: s.plantSize,
-      personName: s.customerName,
-      quantity: s.quantitySold,
-      price: s.sellingPrice,
-      total: s.totalSaleValue,
-      invoiceOrCode: s.invoiceNumber,
-    })),
+    ...sales.flatMap((s) => {
+      if (s.items && s.items.length > 0) {
+        return s.items.map((item, idx) => ({
+          id: `${s.id}-${idx}`,
+          saleId: s.id,
+          type: "sale" as const,
+          date: s.saleDate,
+          plantName: item.plantName,
+          plantSize: item.size,
+          personName: s.customerName,
+          quantity: item.quantity,
+          price: item.sellingPrice,
+          total: item.quantity * item.sellingPrice,
+          invoiceOrCode: s.invoiceNumber,
+          isMultiItem: true,
+        }));
+      } else {
+        return [{
+          id: s.id,
+          saleId: s.id,
+          type: "sale" as const,
+          date: s.saleDate,
+          plantName: s.plantName || "Unknown",
+          plantSize: s.plantSize || "General",
+          personName: s.customerName,
+          quantity: s.quantitySold || 0,
+          price: s.sellingPrice || 0,
+          total: s.totalSaleValue,
+          invoiceOrCode: s.invoiceNumber,
+          isMultiItem: false,
+        }];
+      }
+    }),
     ...purchases.map((p) => ({
       id: p.id,
+      saleId: p.id,
       type: "purchase" as const,
       date: p.purchaseDate,
       plantName: p.plantName,
@@ -273,6 +325,7 @@ export default function DashboardView({
       price: p.costPerUnit,
       total: p.totalPurchaseCost,
       invoiceOrCode: "SUP-PURCHASE",
+      isMultiItem: false,
     })),
     ...expenses.map((e) => ({
       id: e.id,
