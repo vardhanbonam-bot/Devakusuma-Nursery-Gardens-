@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { InventoryItem, PurchaseRecord, SalesRecord, ExpenseRecord } from "../types";
 import { PLANT_PEAK_SEASONS } from "../sampleData";
 import {
@@ -278,6 +278,14 @@ export default function DashboardView({
 
   const lowStockItems = inventory.filter((i) => i.quantityAvailable <= 100);
 
+  // Today's expenses sorted in descending order of amount, capped at top 10
+  const todaysTopExpenses = useMemo(() => {
+    return expenses
+      .filter((e) => e.date === targetDateStr)
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 10);
+  }, [expenses, targetDateStr]);
+
   // Assemble unified recent transactions listing
   const allTransactions = [
     ...sales.flatMap((s) => {
@@ -327,18 +335,22 @@ export default function DashboardView({
       invoiceOrCode: "SUP-PURCHASE",
       isMultiItem: false,
     })),
-    ...expenses.map((e) => ({
-      id: e.id,
-      type: "expense" as const,
-      date: e.date,
-      plantName: `EXPENSE: ${e.category}`,
-      plantSize: e.paymentMode,
-      personName: e.paidTo || "General",
-      quantity: 1,
-      price: e.amount,
-      total: e.amount,
-      invoiceOrCode: e.description || "No description",
-    })),
+    ...expenses
+      .filter((e) => e.date === targetDateStr)
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 10)
+      .map((e) => ({
+        id: e.id,
+        type: "expense" as const,
+        date: e.date,
+        plantName: `EXPENSE: ${e.category} (${e.subcategory})`,
+        plantSize: e.paymentMode,
+        personName: e.paidTo || "General",
+        quantity: 1,
+        price: e.amount,
+        total: e.amount,
+        invoiceOrCode: e.description || "No description",
+      })),
   ].sort((a, b) => {
     return new Date(b.date).getTime() - new Date(a.date).getTime();
   });
@@ -508,6 +520,55 @@ export default function DashboardView({
             <span className="font-mono text-rose-800 text-sm font-bold">₹{expensesYear.toLocaleString("en-IN")}</span>
           </div>
         </div>
+      </div>
+
+      {/* Today's Top 10 Expenses Box in Editorial Style */}
+      <div className="bg-white border border-rose-200/30 p-6 rounded-2xl shadow-xs space-y-4">
+        <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+            <h3 className="text-xs uppercase tracking-wider font-bold text-stone-800 font-sans">
+              Today's High-Value Expenses (Top 10)
+            </h3>
+          </div>
+          <span className="text-[10px] font-mono text-rose-700 bg-rose-50/80 px-2 py-0.5 rounded-md border border-rose-100 uppercase tracking-wider font-semibold">
+            {targetDateStr}
+          </span>
+        </div>
+
+        {todaysTopExpenses.length === 0 ? (
+          <p className="text-xs text-stone-400 italic font-serif py-4 text-center">
+            No expenses registered for today ({targetDateStr}).
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {todaysTopExpenses.map((e, idx) => (
+              <div key={e.id} className="flex justify-between items-center bg-stone-50/50 hover:bg-rose-50/20 p-3.5 rounded-xl border border-stone-200/40 transition">
+                <div className="space-y-1 pr-3 overflow-hidden">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[9px] bg-stone-200/60 text-stone-700 font-sans px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                      #{idx + 1} {e.category}
+                    </span>
+                    <span className="text-[9px] bg-rose-50 text-rose-700 font-sans px-2 py-0.5 rounded font-semibold border border-rose-200/30">
+                      {e.subcategory}
+                    </span>
+                  </div>
+                  <div className="font-serif italic text-stone-900 text-xs truncate max-w-[240px]" title={e.description}>
+                    {e.description || "No description provided"}
+                  </div>
+                  <div className="text-[9px] font-mono text-stone-500 mt-0.5">
+                    Paid to: <span className="font-medium text-stone-700">{e.paidTo || "N/A"}</span> &bull; Mode: <span className="font-semibold text-stone-700">{e.paymentMode}</span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="font-mono font-bold text-[14px] text-rose-700">
+                    ₹{Number(e.amount).toLocaleString("en-IN")}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Middle charts portion (Monthly Trends and Seasonal Performance) */}

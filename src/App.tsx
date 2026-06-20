@@ -544,6 +544,7 @@ export default function App() {
       id: `exp-${newPurchase.id}`,
       date: record.purchaseDate,
       category: "Stock Purchase",
+      subcategory: "Procurement",
       description: `Stock Purchase: ${record.quantityPurchased}x ${record.plantName} (${record.plantSize})`,
       amount: record.totalPurchaseCost,
       paymentMode: "Other",
@@ -819,6 +820,7 @@ export default function App() {
         id: associatedExpenseId,
         date: updatedPurchase.purchaseDate,
         category: "Stock Purchase",
+        subcategory: "Procurement",
         description: `Stock Purchase: ${updatedPurchase.quantityPurchased}x ${updatedPurchase.plantName} (${updatedPurchase.plantSize})`,
         amount: updatedPurchase.totalPurchaseCost,
         paymentMode: "Other",
@@ -991,25 +993,17 @@ export default function App() {
                 damping: 14,
                 delay: 0.1
               }}
-              className="relative flex flex-col items-center justify-center w-36 h-36 border border-[#4A5D4E]/40 rounded-full bg-[#111A13]/90 shadow-2xl backdrop-blur-sm"
+              className="relative flex flex-col items-center justify-center w-36 h-36 border border-[#4A5D4E]/40 rounded-full bg-[#111A13]/90 shadow-2xl backdrop-blur-sm p-4 overflow-hidden"
             >
-              <div className="flex flex-col items-center relative -top-1">
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: [0, 1.25, 1] }}
-                  transition={{ delay: 0.35, duration: 1.0, ease: "easeOut" }}
-                  className="text-[#72E088] filter drop-shadow-[0_0_10px_rgba(114,224,136,0.35)] -mb-0.5"
-                >
-                  <Sprout className="w-14 h-14" strokeWidth={1.5} />
-                </motion.div>
-                
-                <motion.div
-                  initial={{ opacity: 0, scaleY: 0 }}
-                  animate={{ opacity: 1, scaleY: 1 }}
-                  transition={{ delay: 0.2, duration: 0.6 }}
-                  className="w-10 h-6 bg-gradient-to-b from-[#4A5D4E] to-[#243127] rounded-b-lg border-t-2 border-[#72E088]/40 shadow-inner"
-                />
-              </div>
+              <motion.img 
+                src={appLogo} 
+                alt="Devakusuma Logo" 
+                className="w-24 h-24 object-contain" 
+                referrerPolicy="no-referrer"
+                initial={{ scale: 0, rotate: -15 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ delay: 0.35, duration: 0.8, ease: "easeOut" }}
+              />
             </motion.div>
           </div>
 

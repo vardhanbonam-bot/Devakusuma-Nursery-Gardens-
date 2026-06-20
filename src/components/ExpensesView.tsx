@@ -65,20 +65,27 @@ export default function ExpensesView({
   const [manageSubcatCategory, setManageSubcatCategory] = useState("Home");
   const [showSubcategoryManager, setShowSubcategoryManager] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  
+  // Subcategory sort kind filter option ("value-desc" | "value-asc" | "name-asc")
+  const [subcatSortKind, setSubcatSortKind] = useState<"value-desc" | "value-asc" | "name-asc">("value-desc");
 
-  // Filter subcategories matching selected Category
+  // Sorting state for subcategories within the creation form ("asc" | "desc")
+  const [formSubcatSort, setFormSubcatSort] = useState<"asc" | "desc">("asc");
+
+  // Filter subcategories matching selected Category and sort them based on formSubcatSort state
   const filteredSubcategories = useMemo(() => {
-    return subcategories.filter(sub => sub.categoryName.toLowerCase() === category.toLowerCase());
-  }, [subcategories, category]);
+    const list = subcategories.filter(sub => sub.categoryName.toLowerCase() === category.toLowerCase());
+    return [...list].sort((a, b) => {
+      return formSubcatSort === "asc"
+        ? a.name.localeCompare(b.name)
+        : b.name.localeCompare(a.name);
+    });
+  }, [subcategories, category, formSubcatSort]);
 
-  // Sync subcategory on category change
+  // Sync subcategory on category change - always default to empty choice to prompt explicit selection
   useEffect(() => {
-    if (filteredSubcategories.length > 0) {
-      setSubcategory(filteredSubcategories[0].name);
-    } else {
-      setSubcategory("");
-    }
-  }, [category, subcategories]);
+    setSubcategory("");
+  }, [category]);
 
   // Manage subcategory insertion handler
   const handleAddSub = () => {
@@ -132,6 +139,7 @@ export default function ExpensesView({
   const [columnMappings, setColumnMappings] = useState<{ [key: string]: number }>({
     date: -1,
     category: -1,
+    subcategory: -1,
     description: -1,
     amount: -1,
     paymentMode: -1,
@@ -191,10 +199,15 @@ export default function ExpensesView({
       return;
     }
 
+    if (!subcategory.trim()) {
+      alert("Subcategory is mandatory. Please select or add a subcategory. You can click 'Manage subcategories' below to add options.");
+      return;
+    }
+
     onAddExpense({
       date,
       category,
-      subcategory: filteredSubcategories.length > 0 ? subcategory : undefined,
+      subcategory: subcategory,
       description: description.trim(),
       amount: parsedAmount,
       paymentMode,
@@ -376,6 +389,7 @@ export default function ExpensesView({
 
       const rawDate = currentMappings.date >= 0 ? r[currentMappings.date] : undefined;
       const rawCategory = currentMappings.category >= 0 ? r[currentMappings.category] : undefined;
+      const rawSubcategory = currentMappings.subcategory >= 0 ? r[currentMappings.subcategory] : undefined;
       const rawDesc = currentMappings.description >= 0 ? r[currentMappings.description] : undefined;
       const rawAmount = currentMappings.amount >= 0 ? r[currentMappings.amount] : undefined;
       const rawPaymentMode = currentMappings.paymentMode >= 0 ? r[currentMappings.paymentMode] : undefined;
@@ -417,6 +431,12 @@ export default function ExpensesView({
         finalCategory = String(rawCategory).trim();
       }
 
+      // 2.1 Process Subcategory with fallback to General
+      let finalSubcategory = "General";
+      if (rawSubcategory !== undefined && rawSubcategory !== null && String(rawSubcategory).trim() !== "") {
+        finalSubcategory = String(rawSubcategory).trim();
+      }
+
       // 3. Process Amount (stripping characters)
       let finalAmount = 0;
       if (rawAmount !== undefined && rawAmount !== null) {
@@ -444,6 +464,7 @@ export default function ExpensesView({
       list.push({
         date: finalDate,
         category: finalCategory,
+        subcategory: finalSubcategory,
         description: finalDesc,
         amount: finalAmount,
         paymentMode: finalMode,
@@ -602,6 +623,11 @@ export default function ExpensesView({
       return;
     }
 
+    if (!editingExpense.subcategory || !editingExpense.subcategory.trim()) {
+      alert("Subcategory is mandatory. Please select a subcategory for this expense.");
+      return;
+    }
+
     onUpdateExpense({
       ...editingExpense,
       amount: parsedAmount,
@@ -747,10 +773,11 @@ export default function ExpensesView({
       .sort((a, b) => b.value - a.value);
   }, [filteredExpenses]);
 
-  // Compute subcategories matching the editing expense category
+  // Compute subcategories matching the editing expense category (alphabetized A-Z)
   const editingCategorySubcategories = useMemo(() => {
     if (!editingExpense) return [];
-    return subcategories.filter(sub => sub.categoryName.toLowerCase() === editingExpense.category.toLowerCase());
+    const filtered = subcategories.filter(sub => sub.categoryName.toLowerCase() === editingExpense.category.toLowerCase());
+    return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
   }, [editingExpense, subcategories]);
 
   // Group and calculate detailed subcategory breakdowns for expanded category view
@@ -778,16 +805,25 @@ export default function ExpensesView({
     // Calculate percentage for each subcategory relative to the parent category total
     Object.keys(breakdowns).forEach(cat => {
       const catTotal = breakdowns[cat].reduce((sum, b) => sum + b.value, 0);
-      breakdowns[cat] = breakdowns[cat]
-        .map(b => ({
-          ...b,
-          percentage: catTotal > 0 ? (b.value / catTotal) * 100 : 0
-        }))
-        .sort((a, b) => b.value - a.value);
+      let list = breakdowns[cat].map(b => ({
+        ...b,
+        percentage: catTotal > 0 ? (b.value / catTotal) * 100 : 0
+      }));
+
+      // Apply the chosen sort order/kind
+      if (subcatSortKind === "value-desc") {
+        list.sort((a, b) => b.value - a.value);
+      } else if (subcatSortKind === "value-asc") {
+        list.sort((a, b) => a.value - b.value);
+      } else if (subcatSortKind === "name-asc") {
+        list.sort((a, b) => a.name.localeCompare(b.name));
+      }
+
+      breakdowns[cat] = list;
     });
 
     return breakdowns;
-  }, [filteredExpenses]);
+  }, [filteredExpenses, subcatSortKind]);
 
   // Total filtered expense summary
   const totalFilteredSum = useMemo(() => {
@@ -1057,6 +1093,7 @@ export default function ExpensesView({
 
                   {!showCustomCategoryInput && (
                     <form onSubmit={handleSubmitExpense} className="space-y-5" id="add-expense-form">
+                      {/* Row 1: Date & Category */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         
                         {/* Date picker */}
@@ -1119,25 +1156,43 @@ export default function ExpensesView({
 
                       </div>
 
-                      {filteredSubcategories.length > 0 && (
-                        <div className="space-y-1.5 animate-fade-in bg-stone-50/40 p-3.5 border border-stone-200/50 rounded-xl">
-                          <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Subcategory selection *</label>
-                          <select
-                            value={subcategory}
-                            onChange={(e) => setSubcategory(e.target.value)}
-                            className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
-                          >
-                            {filteredSubcategories.map((sub) => (
-                              <option key={sub.id} value={sub.name}>
-                                {sub.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-
+                      {/* Row 2: Subcategory & Amount Spent */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         
+                        {/* Subcategory Selection */}
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center">
+                            <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Subcategory *</label>
+                            <button
+                              type="button"
+                              onClick={() => setFormSubcatSort(prev => prev === "asc" ? "desc" : "asc")}
+                              className="text-[8px] font-sans font-extrabold text-editorial-primary hover:text-editorial-dark hover:underline flex items-center gap-1 bg-stone-100 px-2 py-0.5 rounded-md border border-stone-200 cursor-pointer"
+                              title="Sort subcategory list alphabetically"
+                            >
+                              <span>Sort: {formSubcatSort === "asc" ? "A → Z" : "Z → A"}</span>
+                            </button>
+                          </div>
+                          {filteredSubcategories.length > 0 ? (
+                            <select
+                              value={subcategory}
+                              required
+                              onChange={(e) => setSubcategory(e.target.value)}
+                              className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
+                            >
+                              <option value="">-- Choose Subcategory --</option>
+                              {filteredSubcategories.map((sub) => (
+                                <option key={sub.id} value={sub.name}>
+                                  {sub.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="p-3 bg-red-50 text-[11px] text-red-700 rounded-lg border border-red-200/60 font-sans">
+                              ⚠️ Category has no subcategories. Manage Subs below.
+                            </div>
+                          )}
+                        </div>
+
                         {/* Amount field */}
                         <div className="space-y-1.5">
                           <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Amount Spent (₹) *</label>
@@ -1160,6 +1215,11 @@ export default function ExpensesView({
                           </div>
                         </div>
 
+                      </div>
+
+                      {/* Row 3: Payment Mode & Paid To (Vendor / Person) */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        
                         {/* Payment mode select dropdown */}
                         <div className="space-y-1.5">
                           <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Payment Mode *</label>
@@ -1175,11 +1235,6 @@ export default function ExpensesView({
                           </select>
                         </div>
 
-                      </div>
-
-                      {/* Optional Paid To & Description */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        
                         {/* Paid To (vendor Name) */}
                         <div className="space-y-1.5">
                           <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Paid To (Vendor / Person)</label>
@@ -1195,18 +1250,18 @@ export default function ExpensesView({
                           </div>
                         </div>
 
-                        {/* Description */}
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Description / Ledger Notes</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. Bought 15 cubic meters Red soil mix"
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
-                          />
-                        </div>
+                      </div>
 
+                      {/* Row 4: Description */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Description / Ledger Notes</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Bought 15 cubic meters Red soil mix"
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          className="w-full text-xs font-mono bg-editorial-bg border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:border-editorial-primary/30 focus:outline-none focus:bg-white"
+                        />
                       </div>
 
                       <div className="pt-2">
@@ -1309,15 +1364,16 @@ export default function ExpensesView({
                           Change if column names did not auto-match
                         </span>
                       </div>
-                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                        {[
-                          { key: "date", label: "Date *" },
-                          { key: "category", label: "Category *" },
-                          { key: "description", label: "Description" },
-                          { key: "amount", label: "Amount *" },
-                          { key: "paymentMode", label: "Pay Mode" },
-                          { key: "paidTo", label: "Paid To" }
-                        ].map(field => (
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                          {[
+                            { key: "date", label: "Date *" },
+                            { key: "category", label: "Category *" },
+                            { key: "subcategory", label: "Subcategory *" },
+                            { key: "description", label: "Description" },
+                            { key: "amount", label: "Amount *" },
+                            { key: "paymentMode", label: "Pay Mode" },
+                            { key: "paidTo", label: "Paid To" }
+                          ].map(field => (
                           <div key={field.key} className="space-y-1">
                             <span className="block text-[9px] uppercase tracking-wider text-stone-500 font-bold font-sans">
                               {field.label}
@@ -1375,6 +1431,7 @@ export default function ExpensesView({
                               <th className="py-2.5 px-3">#</th>
                               <th className="py-2.5 px-3">Date</th>
                               <th className="py-2.5 px-3">Category classification</th>
+                              <th className="py-2.5 px-3">Subcategory</th>
                               <th className="py-2.5 px-3">Ledger Details</th>
                               <th className="py-2.5 px-3">Receipt Paid To</th>
                               <th className="py-2.5 px-3">Mode</th>
@@ -1406,6 +1463,11 @@ export default function ExpensesView({
                                         </span>
                                       )}
                                     </div>
+                                  </td>
+                                  <td className="py-2 px-3">
+                                    <span className="inline-flex items-center text-[9px] font-semibold text-stone-600 bg-stone-100 px-1.5 py-0.5 rounded uppercase border border-stone-200">
+                                      {item.subcategory || "General"}
+                                    </span>
                                   </td>
                                   <td className="py-2 px-3 text-stone-605 max-w-[150px] truncate" title={item.description}>
                                     {item.description || <span className="text-stone-300 italic font-serif">No notes</span>}
@@ -1555,7 +1617,21 @@ export default function ExpensesView({
                     {/* Expandable subcategory breakdown list */}
                     {expandedCategories.has(cat.name) && (
                       <div className="pl-4 pr-1 py-1.5 mt-1 border-l-2 border-stone-200 bg-stone-50/50 rounded-r-lg space-y-2 text-[10px] animate-fade-in">
-                        <span className="block font-sans text-[8px] uppercase tracking-wider text-stone-400">Subcategory Breakdown</span>
+                        <div className="flex justify-between items-center bg-stone-100/40 p-1.5 rounded-md mb-1 border border-stone-200/50">
+                          <span className="block font-sans text-[8px] uppercase tracking-wider text-stone-400 font-bold">Subcategory Breakdown</span>
+                          <div className="flex items-center gap-1 text-[8.5px] text-stone-500 font-sans">
+                            <span>Sort:</span>
+                            <select
+                              value={subcatSortKind}
+                              onChange={(e) => setSubcatSortKind(e.target.value as any)}
+                              className="bg-transparent border-0 font-semibold text-editorial-primary outline-none focus:ring-0 uppercase cursor-pointer text-[8px]"
+                            >
+                              <option value="value-desc">Highest Cost First</option>
+                              <option value="value-asc">Lowest Cost First</option>
+                              <option value="name-asc">Alphabetical (A-Z)</option>
+                            </select>
+                          </div>
+                        </div>
                         {(!subcategoryBreakdowns[cat.name] || subcategoryBreakdowns[cat.name].length === 0) ? (
                           <span className="text-stone-400 italic block">No subcategory records found for this category.</span>
                         ) : (
@@ -1714,6 +1790,7 @@ export default function ExpensesView({
               <tr className="border-b border-editorial-primary/10 bg-stone-50/40 text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/70">
                 <th className="py-4 px-6">Expense Date</th>
                 <th className="py-4 px-6">Category Classification</th>
+                <th className="py-4 px-6">Subcategory</th>
                 <th className="py-4 px-6">Ledger Details</th>
                 <th className="py-4 px-6">Paid To</th>
                 <th className="py-4 px-6">Mode</th>
@@ -1724,7 +1801,7 @@ export default function ExpensesView({
             <tbody className="divide-y divide-editorial-primary/5 text-xs">
               {filteredExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center text-stone-400 italic font-serif">
+                  <td colSpan={8} className="py-16 text-center text-stone-400 italic font-serif">
                     No expense items registered yet matching current parameters.
                   </td>
                 </tr>
@@ -1741,16 +1818,20 @@ export default function ExpensesView({
 
                     {/* Category */}
                     <td className="py-4 px-6 shrink-0 whitespace-nowrap">
-                      <div className="flex flex-col gap-1 items-start">
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-sans font-bold uppercase tracking-wider bg-editorial-accent/10 text-editorial-primary border border-editorial-accent/15">
-                          {exp.category}
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-sans font-bold uppercase tracking-wider bg-editorial-accent/10 text-editorial-primary border border-editorial-accent/15">
+                        {exp.category}
+                      </span>
+                    </td>
+
+                    {/* Subcategory */}
+                    <td className="py-4 px-6 shrink-0 whitespace-nowrap">
+                      {exp.subcategory ? (
+                        <span className="inline-flex items-center text-[9px] font-sans font-bold text-stone-700 bg-stone-100 px-2 py-0.5 rounded uppercase border border-stone-200">
+                          {exp.subcategory}
                         </span>
-                        {exp.subcategory && (
-                          <span className="inline-flex items-center text-[8px] font-sans font-bold text-stone-500 bg-stone-100 px-1 py-0.5 rounded uppercase border border-stone-200">
-                            {exp.subcategory}
-                          </span>
-                        )}
-                      </div>
+                      ) : (
+                        <span className="text-stone-300 italic font-serif text-[10px]">--</span>
+                      )}
                     </td>
 
                     {/* Details Description */}
@@ -1864,11 +1945,10 @@ export default function ExpensesView({
                     value={editingExpense.category}
                     onChange={(e) => {
                       const newCat = e.target.value;
-                      const subs = subcategories.filter(sub => sub.categoryName.toLowerCase() === newCat.toLowerCase());
                       setEditingExpense({
                         ...editingExpense,
                         category: newCat,
-                        subcategory: subs.length > 0 ? subs[0].name : undefined
+                        subcategory: ""
                       });
                     }}
                     className="w-full text-xs font-mono bg-stone-50 border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:outline-none"
@@ -1883,6 +1963,28 @@ export default function ExpensesView({
 
               <div className="grid grid-cols-2 gap-4">
                 
+                {/* Subcategory */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Subcategory *</label>
+                  {editingCategorySubcategories.length > 0 ? (
+                    <select
+                      value={editingExpense.subcategory || ""}
+                      required
+                      onChange={(e) => setEditingExpense({ ...editingExpense, subcategory: e.target.value })}
+                      className="w-full text-xs font-mono bg-stone-50 border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:outline-none focus:bg-white"
+                    >
+                      <option value="">-- Select Subcategory --</option>
+                      {editingCategorySubcategories.map((sub) => (
+                        <option key={sub.id} value={sub.name}>{sub.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="p-2 bg-red-50 text-[10px] text-red-700 rounded-lg border border-red-200/60 font-sans">
+                      ⚠️ Category has no subcategories. Manage first.
+                    </div>
+                  )}
+                </div>
+
                 {/* Amount */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Amount (₹) *</label>
@@ -1901,6 +2003,10 @@ export default function ExpensesView({
                   />
                 </div>
 
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                
                 {/* Payment Mode */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Payment Mode *</label>
@@ -1916,10 +2022,6 @@ export default function ExpensesView({
                   </select>
                 </div>
 
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                
                 {/* Paid To */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Paid To</label>
@@ -1931,36 +2033,20 @@ export default function ExpensesView({
                   />
                 </div>
 
-                {/* Description */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Description Details</label>
-                  <input
-                    type="text"
-                    value={editingExpense.description}
-                    onChange={(e) => setEditingExpense({ ...editingExpense, description: e.target.value })}
-                    className="w-full text-xs font-mono bg-stone-50 border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:outline-none"
-                  />
-                </div>
-
               </div>
 
-              {editingCategorySubcategories.length > 0 && (
-                <div className="space-y-1 bg-stone-50 p-3.5 border border-stone-200/50 rounded-xl">
-                  <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Subcategory *</label>
-                  <select
-                    value={editingExpense.subcategory || ""}
-                    onChange={(e) => setEditingExpense({ ...editingExpense, subcategory: e.target.value })}
-                    className="w-full text-xs font-mono bg-white border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:outline-none"
-                  >
-                    {!editingExpense.subcategory && <option value="">-- Select Subcategory --</option>}
-                    {editingCategorySubcategories.map((sub) => (
-                      <option key={sub.id} value={sub.name}>{sub.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              {/* Description */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-sans font-bold uppercase tracking-wider text-editorial-primary/80">Description Details</label>
+                <input
+                  type="text"
+                  value={editingExpense.description}
+                  onChange={(e) => setEditingExpense({ ...editingExpense, description: e.target.value })}
+                  className="w-full text-xs font-mono bg-stone-50 border border-editorial-primary/10 rounded-lg p-3 text-editorial-dark focus:outline-none"
+                />
+              </div>
 
-              <div className="mt-6 flex gap-3 pt-3 border-t border-stone-100">
+               <div className="mt-6 flex gap-3 pt-3 border-t border-stone-100">
                 <button
                   type="button"
                   onClick={() => setEditingExpense(null)}

@@ -64,7 +64,7 @@ export interface ExpenseRecord {
   id: string;
   date: string; // YYYY-MM-DD
   category: string;
-  subcategory?: string; // Optional subcategory for secondary grouping
+  subcategory: string; // Mandatory subcategory for robust secondary grouping
   description: string;
   amount: number;
   paymentMode: string; // Cash / UPI / Bank transfer / Other
